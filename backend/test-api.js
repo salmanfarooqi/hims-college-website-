@@ -1,8 +1,8 @@
 // Test script to verify API endpoints
 const axios = require('axios');
 
-// Replace with your actual Vercel URL
-const BASE_URL = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000';
+// Base URL for testing - replace with your actual Vercel URL after deployment
+const BASE_URL = 'https://your-vercel-app.vercel.app'; // Replace with your actual Vercel URL
 
 console.log('Testing API endpoints...');
 console.log('Base URL:', BASE_URL);

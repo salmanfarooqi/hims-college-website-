@@ -3,7 +3,7 @@ const express = require('express');
 const serverless = require('serverless-http');
 const cors = require('cors');
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '../config.env') });
+const config = require('../config/production');
 
 const sequelize = require(path.join(__dirname, '../config/database'));
 const Application = require(path.join(__dirname, '../models/Application'));
