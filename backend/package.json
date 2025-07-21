@@ -12,9 +12,11 @@
     "setup": "node setup-admin.js",
     "seed": "node seed-data.js",
     "postinstall": "npm install pg --save",
-    "test": "node test-pg.js"
+    "test": "node test-pg.js",
+    "test-api": "node test-api.js"
   },
   "dependencies": {
+    "axios": "^1.6.0",
     "bcryptjs": "^2.4.3",
     "cloudinary": "^1.41.3",
     "cors": "^2.8.5",
