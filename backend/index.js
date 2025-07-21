@@ -26,7 +26,7 @@ app.use('/api/admin', require('../routes/admin'));
 app.use('/api/content', require('../routes/content'));
 
 // Health check
-app.get('/api/health', (req, res) => {
+app.get('/', (req, res) => {
   res.json({ status: 'OK', message: 'Serverless server is running' });
 });
 
