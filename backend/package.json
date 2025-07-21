@@ -2,7 +2,8 @@
   "name": "hims-backend",
   "version": "1.0.0",
   "description": "Backend API for HIMS College Application System",
-  "main": "index.js",
+"main": "api/index.js"
+,
   "engines": {
   "node": "20.x"
   },
