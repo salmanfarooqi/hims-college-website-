@@ -1,6 +1,15 @@
 const { Sequelize } = require('sequelize');
 require('dotenv').config({ path: './config.env' });
 
+// Explicitly require pg to ensure it's loaded
+try {
+  require('pg');
+  console.log('pg module loaded successfully');
+} catch (error) {
+  console.error('Failed to load pg module:', error);
+  throw error;
+}
+
 const sequelize = new Sequelize(
   process.env.DB_NAME,
   process.env.DB_USER,
