@@ -3,14 +3,14 @@ const express = require('express');
 const serverless = require('serverless-http');
 const cors = require('cors');
 const path = require('path');
-require('dotenv').config({ path: './config.env' });
+require('dotenv').config({ path: path.join(__dirname, '../config.env') });
 
-const sequelize = require('../config/database');
-const Application = require('../models/Application');
-const Admin = require('../models/Admin');
-const HeroSlide = require('../models/HeroSlide');
-const Teacher = require('../models/Teacher');
-const Student = require('../models/Student');
+const sequelize = require(path.join(__dirname, '../config/database'));
+const Application = require(path.join(__dirname, '../models/Application'));
+const Admin = require(path.join(__dirname, '../models/Admin'));
+const HeroSlide = require(path.join(__dirname, '../models/HeroSlide'));
+const Teacher = require(path.join(__dirname, '../models/Teacher'));
+const Student = require(path.join(__dirname, '../models/Student'));
 
 const app = express();
 
@@ -49,9 +49,9 @@ app.get('/api', (req, res) => {
 });
 
 // Routes
-app.use('/api/applications', require('../routes/applications'));
-app.use('/api/admin', require('../routes/admin'));
-app.use('/api/content', require('../routes/content'));
+app.use('/api/applications', require(path.join(__dirname, '../routes/applications')));
+app.use('/api/admin', require(path.join(__dirname, '../routes/admin')));
+app.use('/api/content', require(path.join(__dirname, '../routes/content')));
 
 // Sync the database (only once per cold start)
 sequelize.sync({ force: false }).then(() => {
