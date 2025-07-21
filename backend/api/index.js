@@ -1,4 +1,12 @@
 // api/server.js
+// Explicitly load pg package first
+try {
+  require('pg');
+  console.log('pg package loaded successfully');
+} catch (error) {
+  console.error('Failed to load pg package:', error);
+}
+
 const express = require('express');
 const serverless = require('serverless-http');
 const cors = require('cors');
