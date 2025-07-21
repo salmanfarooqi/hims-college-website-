@@ -1,0 +1,28 @@
+# Ignore development files
+node_modules
+npm-debug.log
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Ignore IDE files
+.vscode
+.idea
+*.swp
+*.swo
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
+
+# Keep important files
+!package.json
+!package-lock.json
+!api/
+!config/
+!models/
+!routes/
+!middleware/
+!utils/ 

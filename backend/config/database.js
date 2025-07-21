@@ -1,6 +1,9 @@
 const { Sequelize } = require('sequelize');
 const config = require('./production');
 
+// Explicitly require pg to ensure it's loaded
+require('pg');
+
 const sequelize = new Sequelize(
   config.database.name,
   config.database.user,
@@ -24,5 +27,14 @@ const sequelize = new Sequelize(
     }
   }
 );
+
+// Test the connection
+sequelize.authenticate()
+  .then(() => {
+    console.log('Database connection established successfully.');
+  })
+  .catch(err => {
+    console.error('Unable to connect to the database:', err);
+  });
 
 module.exports = sequelize; 
