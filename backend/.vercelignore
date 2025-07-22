@@ -17,6 +17,16 @@ npm-debug.log
 .DS_Store
 Thumbs.db
 
+# Ignore test and development files
+test-api.js
+setup-admin.js
+seed-data.js
+deploy.sh
+DEPLOYMENT.md
+
+# Ignore uploads directory (files should be stored in cloud storage)
+uploads/
+
 # Keep important files
 !package.json
 !package-lock.json
