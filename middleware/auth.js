@@ -10,7 +10,7 @@ const auth = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const admin = await Admin.findByPk(decoded.id);
+    const admin = await Admin.findById(decoded.id);
 
     if (!admin) {
       return res.status(401).json({ error: 'Invalid token.' });

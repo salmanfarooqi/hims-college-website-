@@ -4,14 +4,13 @@ const Admin = require('../models/Admin');
 const Application = require('../models/Application');
 const auth = require('../middleware/auth');
 const jwt = require('jsonwebtoken');
-const sequelize = require('../config/database');
 
 // Admin login
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
     
-    const admin = await Admin.findOne({ where: { email } });
+    const admin = await Admin.findOne({ email });
     if (!admin) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -22,7 +21,7 @@ router.post('/login', async (req, res) => {
     }
 
     const token = jwt.sign(
-      { id: admin.id, email: admin.email, role: admin.role },
+      { id: admin._id, email: admin.email, role: admin.role },
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
@@ -30,7 +29,7 @@ router.post('/login', async (req, res) => {
     res.json({
       token,
       admin: {
-        id: admin.id,
+        id: admin._id,
         email: admin.email,
         name: admin.name,
         role: admin.role
@@ -45,24 +44,24 @@ router.post('/login', async (req, res) => {
 router.get('/applications', auth, async (req, res) => {
   try {
     const { page = 1, limit = 10, status, program } = req.query;
-    const offset = (page - 1) * limit;
+    const skip = (page - 1) * limit;
     
-    let whereClause = {};
-    if (status) whereClause.status = status;
-    if (program) whereClause.program = program;
+    let filter = {};
+    if (status) filter.status = status;
+    if (program) filter.program = program;
 
-    const applications = await Application.findAndCountAll({
-      where: whereClause,
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-      order: [['createdAt', 'DESC']]
-    });
+    const applications = await Application.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await Application.countDocuments(filter);
 
     res.json({
-      applications: applications.rows,
-      total: applications.count,
+      applications,
+      total,
       currentPage: parseInt(page),
-      totalPages: Math.ceil(applications.count / limit)
+      totalPages: Math.ceil(total / limit)
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch applications' });
@@ -72,7 +71,7 @@ router.get('/applications', auth, async (req, res) => {
 // Get single application
 router.get('/applications/:id', auth, async (req, res) => {
   try {
-    const application = await Application.findByPk(req.params.id);
+    const application = await Application.findById(req.params.id);
     if (!application) {
       return res.status(404).json({ error: 'Application not found' });
     }
@@ -86,13 +85,16 @@ router.get('/applications/:id', auth, async (req, res) => {
 router.patch('/applications/:id', auth, async (req, res) => {
   try {
     const { status, notes } = req.body;
-    const application = await Application.findByPk(req.params.id);
+    const application = await Application.findById(req.params.id);
     
     if (!application) {
       return res.status(404).json({ error: 'Application not found' });
     }
 
-    await application.update({ status, notes });
+    application.status = status;
+    if (notes) application.notes = notes;
+    await application.save();
+
     res.json({ message: 'Application updated successfully', application });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update application' });
@@ -102,18 +104,26 @@ router.patch('/applications/:id', auth, async (req, res) => {
 // Get application statistics
 router.get('/statistics', auth, async (req, res) => {
   try {
-    const totalApplications = await Application.count();
-    const pendingApplications = await Application.count({ where: { status: 'pending' } });
-    const approvedApplications = await Application.count({ where: { status: 'approved' } });
-    const rejectedApplications = await Application.count({ where: { status: 'rejected' } });
+    const totalApplications = await Application.countDocuments();
+    const pendingApplications = await Application.countDocuments({ status: 'pending' });
+    const approvedApplications = await Application.countDocuments({ status: 'approved' });
+    const rejectedApplications = await Application.countDocuments({ status: 'rejected' });
 
-    const programStats = await Application.findAll({
-      attributes: [
-        'program',
-        [sequelize.fn('COUNT', sequelize.col('id')), 'count']
-      ],
-      group: ['program']
-    });
+    const programStats = await Application.aggregate([
+      {
+        $group: {
+          _id: '$program',
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $project: {
+          program: '$_id',
+          count: 1,
+          _id: 0
+        }
+      }
+    ]);
 
     res.json({
       total: totalApplications,
@@ -130,7 +140,7 @@ router.get('/statistics', auth, async (req, res) => {
 // Create admin account (for initial setup)
 router.post('/setup', async (req, res) => {
   try {
-    const adminCount = await Admin.count();
+    const adminCount = await Admin.countDocuments();
     if (adminCount > 0) {
       return res.status(400).json({ error: 'Admin already exists' });
     }

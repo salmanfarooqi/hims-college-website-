@@ -1,15 +1,15 @@
-const sequelize = require('./config/database');
+const { connectDB } = require('./config/database');
 const Admin = require('./models/Admin');
 require('dotenv').config({ path: './config.env' });
 
 const setupAdmin = async () => {
   try {
-    // Sync database
-    await sequelize.sync({ force: false });
-    console.log('Database synced successfully');
+    // Connect to MongoDB
+    await connectDB();
+    console.log('MongoDB connected successfully');
 
     // Check if admin already exists
-    const adminCount = await Admin.count();
+    const adminCount = await Admin.countDocuments();
     if (adminCount > 0) {
       console.log('Admin account already exists');
       process.exit(0);

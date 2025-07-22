@@ -3,7 +3,7 @@ const cors = require('cors');
 const path = require('path');
 require('dotenv').config({ path: './config.env' });
 
-const sequelize = require('./config/database');
+const { connectDB } = require('./config/database');
 const Application = require('./models/Application');
 const Admin = require('./models/Admin');
 const HeroSlide = require('./models/HeroSlide');
@@ -33,12 +33,12 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'Server is running' });
 });
 
-// Database sync and server start
+// Database connection and server start
 const startServer = async () => {
   try {
-    // Sync database
-    await sequelize.sync({ force: false });
-    console.log('Database synced successfully');
+    // Connect to MongoDB
+    await connectDB();
+    console.log('MongoDB connected successfully');
 
     // Create uploads directory if it doesn't exist
     const fs = require('fs');
