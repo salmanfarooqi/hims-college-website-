@@ -1,6 +1,6 @@
 const sequelize = require('./config/database');
 const Admin = require('./models/Admin');
-const config = require('./config/production');
+require('dotenv').config({ path: './config.env' });
 
 const setupAdmin = async () => {
   try {
@@ -17,15 +17,15 @@ const setupAdmin = async () => {
 
     // Create admin account
     const admin = await Admin.create({
-      email: config.admin.email,
-      password: config.admin.password,
+      email: process.env.ADMIN_EMAIL || 'hims@gmail.com',
+      password: process.env.ADMIN_PASSWORD || 'hims123',
       name: 'HIMS College Administrator',
       role: 'super_admin'
     });
 
     console.log('Admin account created successfully');
     console.log('Email:', admin.email);
-    console.log('Password:', config.admin.password);
+    console.log('Password:', process.env.ADMIN_PASSWORD || 'hims123');
     process.exit(0);
   } catch (error) {
     console.error('Failed to setup admin:', error);

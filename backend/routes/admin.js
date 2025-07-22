@@ -5,7 +5,6 @@ const Application = require('../models/Application');
 const auth = require('../middleware/auth');
 const jwt = require('jsonwebtoken');
 const sequelize = require('../config/database');
-const config = require('../config/production');
 
 // Admin login
 router.post('/login', async (req, res) => {
@@ -24,7 +23,7 @@ router.post('/login', async (req, res) => {
 
     const token = jwt.sign(
       { id: admin.id, email: admin.email, role: admin.role },
-      config.jwt.secret,
+      process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
 
@@ -137,8 +136,8 @@ router.post('/setup', async (req, res) => {
     }
 
     const admin = await Admin.create({
-      email: config.admin.email,
-      password: config.admin.password,
+      email: process.env.ADMIN_EMAIL,
+      password: process.env.ADMIN_PASSWORD,
       name: 'College Administrator',
       role: 'super_admin'
     });
