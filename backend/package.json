@@ -6,7 +6,6 @@
   "scripts": {
     "start": "node api/index.js",
     "dev": "nodemon api/index.js",
-    "build": "npm install",
     "setup": "node setup-admin.js",
     "seed": "node seed-data.js",
     "test": "echo \"Error: no test specified\" && exit 1"
