@@ -8,24 +8,28 @@ const setupAdmin = async () => {
     await connectDB();
     console.log('MongoDB connected successfully');
 
-    // Check if admin already exists
-    const adminCount = await Admin.countDocuments();
-    if (adminCount > 0) {
-      console.log('Admin account already exists');
+    // Check if admin already exists with the specific email
+    const existingAdmin = await Admin.findOne({ email: 'hims@gmail.com' });
+    if (existingAdmin) {
+      console.log('Admin account already exists with email: hims@gmail.com');
+      console.log('You can use these credentials to login:');
+      console.log('Email: hims@gmail.com');
+      console.log('Password: hims123');
       process.exit(0);
     }
 
-    // Create admin account
+    // Create admin account with specific credentials
     const admin = await Admin.create({
-      email: process.env.ADMIN_EMAIL || 'hims@gmail.com',
-      password: process.env.ADMIN_PASSWORD || 'hims123',
+      email: 'hims@gmail.com',
+      password: 'hims123',
       name: 'HIMS College Administrator',
       role: 'super_admin'
     });
 
-    console.log('Admin account created successfully');
-    console.log('Email:', admin.email);
-    console.log('Password:', process.env.ADMIN_PASSWORD || 'hims123');
+    console.log('Admin account created successfully!');
+    console.log('Email: hims@gmail.com');
+    console.log('Password: hims123');
+    console.log('You can now login to the admin panel with these credentials.');
     process.exit(0);
   } catch (error) {
     console.error('Failed to setup admin:', error);

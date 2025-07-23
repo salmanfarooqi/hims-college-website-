@@ -21,8 +21,7 @@ const connectDB = async () => {
   try {
     console.log('Attempting to connect to MongoDB...');
     
-    // Disable mongoose buffering and set strict mode
-    mongoose.set('bufferCommands', false);
+    // Set mongoose options
     mongoose.set('strictQuery', false);
     
     await mongoose.connect(MONGODB_URI, {

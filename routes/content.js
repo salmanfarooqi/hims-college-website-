@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const HeroSlide = require('../models/HeroSlide');
+const Teacher = require('../models/Teacher');
+const Student = require('../models/Student');
 const auth = require('../middleware/auth');
 const multer = require('multer');
 const path = require('path');
@@ -288,6 +290,330 @@ router.patch('/admin/hero-slides/reorder', auth, async (req, res) => {
   } catch (error) {
     console.error('Error reordering hero slides:', error);
     res.status(500).json({ error: 'Failed to reorder hero slides' });
+  }
+});
+
+// Get all teachers (public)
+router.get('/teachers', async (req, res) => {
+  try {
+    console.log('Fetching teachers...');
+    
+    // Check if database is ready
+    if (!isDatabaseReady()) {
+      console.log('Database not ready, returning empty array');
+      return res.json([]);
+    }
+    
+    const teachers = await Teacher.find({ status: 'active' })
+      .select('-__v')
+      .sort({ lastName: 1, firstName: 1 });
+    
+    console.log(`Returning ${teachers.length} active teachers`);
+    res.json(teachers);
+    
+  } catch (error) {
+    console.error('Error fetching teachers:', error);
+    res.status(500).json({ error: 'Failed to fetch teachers' });
+  }
+});
+
+// Get all students (public)
+router.get('/students', async (req, res) => {
+  try {
+    console.log('Fetching students...');
+    
+    // Check if database is ready
+    if (!isDatabaseReady()) {
+      console.log('Database not ready, returning empty array');
+      return res.json([]);
+    }
+    
+    const students = await Student.find({ status: 'active' })
+      .select('-__v')
+      .sort({ lastName: 1, firstName: 1 });
+    
+    console.log(`Returning ${students.length} active students`);
+    res.json(students);
+    
+  } catch (error) {
+    console.error('Error fetching students:', error);
+    res.status(500).json({ error: 'Failed to fetch students' });
+  }
+});
+
+// Get teacher by ID (public)
+router.get('/teachers/:id', async (req, res) => {
+  try {
+    if (!isDatabaseReady()) {
+      return res.status(503).json({ error: 'Database not available' });
+    }
+    
+    const teacher = await Teacher.findById(req.params.id).select('-__v');
+    if (!teacher) {
+      return res.status(404).json({ error: 'Teacher not found' });
+    }
+    
+    res.json(teacher);
+  } catch (error) {
+    console.error('Error fetching teacher:', error);
+    res.status(500).json({ error: 'Failed to fetch teacher' });
+  }
+});
+
+// Get student by ID (public)
+router.get('/students/:id', async (req, res) => {
+  try {
+    if (!isDatabaseReady()) {
+      return res.status(503).json({ error: 'Database not available' });
+    }
+    
+    const student = await Student.findById(req.params.id).select('-__v');
+    if (!student) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+    
+    res.json(student);
+  } catch (error) {
+    console.error('Error fetching student:', error);
+    res.status(500).json({ error: 'Failed to fetch student' });
+  }
+});
+
+// Admin endpoints for teachers
+router.get('/admin/teachers', auth, async (req, res) => {
+  try {
+    if (!isDatabaseReady()) {
+      return res.status(503).json({ error: 'Database not available' });
+    }
+    
+    const teachers = await Teacher.find()
+      .select('-__v')
+      .sort({ lastName: 1, firstName: 1 });
+    
+    res.json(teachers);
+  } catch (error) {
+    console.error('Error fetching admin teachers:', error);
+    res.status(500).json({ error: 'Failed to fetch teachers' });
+  }
+});
+
+// Admin endpoints for students
+router.get('/admin/students', auth, async (req, res) => {
+  try {
+    if (!isDatabaseReady()) {
+      return res.status(503).json({ error: 'Database not available' });
+    }
+    
+    const students = await Student.find()
+      .select('-__v')
+      .sort({ lastName: 1, firstName: 1 });
+    
+    res.json(students);
+  } catch (error) {
+    console.error('Error fetching admin students:', error);
+    res.status(500).json({ error: 'Failed to fetch students' });
+  }
+});
+
+// Create new teacher (admin only)
+router.post('/admin/teachers', auth, async (req, res) => {
+  try {
+    if (!isDatabaseReady()) {
+      return res.status(503).json({ error: 'Database not available' });
+    }
+    
+    const teacher = new Teacher(req.body);
+    await teacher.save();
+    
+    res.status(201).json({ message: 'Teacher created successfully', teacher });
+  } catch (error) {
+    console.error('Error creating teacher:', error);
+    res.status(500).json({ error: 'Failed to create teacher' });
+  }
+});
+
+// Update teacher (admin only)
+router.put('/admin/teachers/:id', auth, async (req, res) => {
+  try {
+    if (!isDatabaseReady()) {
+      return res.status(503).json({ error: 'Database not available' });
+    }
+    
+    const teacher = await Teacher.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true, runValidators: true }
+    );
+    
+    if (!teacher) {
+      return res.status(404).json({ error: 'Teacher not found' });
+    }
+    
+    res.json({ message: 'Teacher updated successfully', teacher });
+  } catch (error) {
+    console.error('Error updating teacher:', error);
+    res.status(500).json({ error: 'Failed to update teacher' });
+  }
+});
+
+// Delete teacher (admin only)
+router.delete('/admin/teachers/:id', auth, async (req, res) => {
+  try {
+    if (!isDatabaseReady()) {
+      return res.status(503).json({ error: 'Database not available' });
+    }
+    
+    const teacher = await Teacher.findByIdAndDelete(req.params.id);
+    if (!teacher) {
+      return res.status(404).json({ error: 'Teacher not found' });
+    }
+    
+    res.json({ message: 'Teacher deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting teacher:', error);
+    res.status(500).json({ error: 'Failed to delete teacher' });
+  }
+});
+
+// Create new student (admin only)
+router.post('/admin/students', auth, async (req, res) => {
+  try {
+    if (!isDatabaseReady()) {
+      return res.status(503).json({ error: 'Database not available' });
+    }
+    
+    const student = new Student(req.body);
+    await student.save();
+    
+    res.status(201).json({ message: 'Student created successfully', student });
+  } catch (error) {
+    console.error('Error creating student:', error);
+    res.status(500).json({ error: 'Failed to create student' });
+  }
+});
+
+// Update student (admin only)
+router.put('/admin/students/:id', auth, async (req, res) => {
+  try {
+    if (!isDatabaseReady()) {
+      return res.status(503).json({ error: 'Database not available' });
+    }
+    
+    const student = await Student.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true, runValidators: true }
+    );
+    
+    if (!student) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+    
+    res.json({ message: 'Student updated successfully', student });
+  } catch (error) {
+    console.error('Error updating student:', error);
+    res.status(500).json({ error: 'Failed to update student' });
+  }
+});
+
+// Delete student (admin only)
+router.delete('/admin/students/:id', auth, async (req, res) => {
+  try {
+    if (!isDatabaseReady()) {
+      return res.status(503).json({ error: 'Database not available' });
+    }
+    
+    const student = await Student.findByIdAndDelete(req.params.id);
+    if (!student) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+    
+    res.json({ message: 'Student deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting student:', error);
+    res.status(500).json({ error: 'Failed to delete student' });
+  }
+});
+
+// Get teacher statistics (admin only)
+router.get('/admin/teachers/stats', auth, async (req, res) => {
+  try {
+    if (!isDatabaseReady()) {
+      return res.status(503).json({ error: 'Database not available' });
+    }
+    
+    const totalTeachers = await Teacher.countDocuments();
+    const activeTeachers = await Teacher.countDocuments({ status: 'active' });
+    const inactiveTeachers = await Teacher.countDocuments({ status: 'inactive' });
+    const retiredTeachers = await Teacher.countDocuments({ status: 'retired' });
+    
+    const departmentStats = await Teacher.aggregate([
+      {
+        $group: {
+          _id: '$department',
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $project: {
+          department: '$_id',
+          count: 1,
+          _id: 0
+        }
+      }
+    ]);
+    
+    res.json({
+      total: totalTeachers,
+      active: activeTeachers,
+      inactive: inactiveTeachers,
+      retired: retiredTeachers,
+      departmentStats
+    });
+  } catch (error) {
+    console.error('Error fetching teacher statistics:', error);
+    res.status(500).json({ error: 'Failed to fetch teacher statistics' });
+  }
+});
+
+// Get student statistics (admin only)
+router.get('/admin/students/stats', auth, async (req, res) => {
+  try {
+    if (!isDatabaseReady()) {
+      return res.status(503).json({ error: 'Database not available' });
+    }
+    
+    const totalStudents = await Student.countDocuments();
+    const activeStudents = await Student.countDocuments({ status: 'active' });
+    const inactiveStudents = await Student.countDocuments({ status: 'inactive' });
+    const graduatedStudents = await Student.countDocuments({ status: 'graduated' });
+    
+    const programStats = await Student.aggregate([
+      {
+        $group: {
+          _id: '$program',
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $project: {
+          program: '$_id',
+          count: 1,
+          _id: 0
+        }
+      }
+    ]);
+    
+    res.json({
+      total: totalStudents,
+      active: activeStudents,
+      inactive: inactiveStudents,
+      graduated: graduatedStudents,
+      programStats
+    });
+  } catch (error) {
+    console.error('Error fetching student statistics:', error);
+    res.status(500).json({ error: 'Failed to fetch student statistics' });
   }
 });
 
