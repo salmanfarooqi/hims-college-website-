@@ -140,12 +140,24 @@ router.get('/statistics', auth, async (req, res) => {
 // Create admin account (for initial setup)
 router.post('/setup', async (req, res) => {
   try {
+    console.log('Attempting to create admin...');
+    
     // Check if admin with specific email already exists
     const existingAdmin = await Admin.findOne({ email: 'hims@gmail.com' });
     if (existingAdmin) {
-      return res.status(400).json({ error: 'Admin already exists', message: 'Admin with email hims@gmail.com already exists' });
+      console.log('Admin already exists');
+      return res.status(400).json({ 
+        error: 'Admin already exists', 
+        message: 'Admin with email hims@gmail.com already exists',
+        admin: {
+          email: existingAdmin.email,
+          name: existingAdmin.name,
+          role: existingAdmin.role
+        }
+      });
     }
 
+    console.log('Creating new admin...');
     const admin = await Admin.create({
       email: 'hims@gmail.com',
       password: 'hims123',
@@ -153,14 +165,24 @@ router.post('/setup', async (req, res) => {
       role: 'super_admin'
     });
 
+    console.log('Admin created successfully');
     res.json({ 
       message: 'Admin account created successfully',
       email: 'hims@gmail.com',
-      password: 'hims123'
+      password: 'hims123',
+      admin: {
+        id: admin._id,
+        email: admin.email,
+        name: admin.name,
+        role: admin.role
+      }
     });
   } catch (error) {
     console.error('Admin creation error:', error);
-    res.status(500).json({ error: 'Failed to create admin account' });
+    res.status(500).json({ 
+      error: 'Failed to create admin account',
+      details: error.message 
+    });
   }
 });
 
