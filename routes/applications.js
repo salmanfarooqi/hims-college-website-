@@ -97,6 +97,84 @@ router.post('/', upload.fields([
   }
 });
 
+// Get all applications (public endpoint for checking applications)
+router.get('/', async (req, res) => {
+  try {
+    const { page = 1, limit = 10, status, program } = req.query;
+    const skip = (page - 1) * limit;
+    
+    let filter = {};
+    if (status) filter.status = status;
+    if (program) filter.program = program;
+
+    const applications = await Application.find(filter)
+      .select('firstName lastName email program status createdAt')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await Application.countDocuments(filter);
+
+    res.json({
+      applications,
+      total,
+      currentPage: parseInt(page),
+      totalPages: Math.ceil(total / limit)
+    });
+  } catch (error) {
+    console.error('Error fetching applications:', error);
+    res.status(500).json({ error: 'Failed to fetch applications' });
+  }
+});
+
+// Get application statistics
+router.get('/statistics', async (req, res) => {
+  try {
+    const totalApplications = await Application.countDocuments();
+    const pendingApplications = await Application.countDocuments({ status: 'pending' });
+    const approvedApplications = await Application.countDocuments({ status: 'approved' });
+    const rejectedApplications = await Application.countDocuments({ status: 'rejected' });
+
+    // Get applications by program
+    const programStats = await Application.aggregate([
+      {
+        $group: {
+          _id: '$program',
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { count: -1 } }
+    ]);
+
+    // Get applications by month
+    const monthlyStats = await Application.aggregate([
+      {
+        $group: {
+          _id: {
+            year: { $year: '$createdAt' },
+            month: { $month: '$createdAt' }
+          },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { '_id.year': -1, '_id.month': -1 } },
+      { $limit: 12 }
+    ]);
+
+    res.json({
+      total: totalApplications,
+      pending: pendingApplications,
+      approved: approvedApplications,
+      rejected: rejectedApplications,
+      byProgram: programStats,
+      byMonth: monthlyStats
+    });
+  } catch (error) {
+    console.error('Error fetching statistics:', error);
+    res.status(500).json({ error: 'Failed to fetch statistics' });
+  }
+});
+
 // Get application status
 router.get('/status/:id', async (req, res) => {
   try {

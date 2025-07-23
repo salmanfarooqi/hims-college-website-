@@ -1,100 +1,33 @@
 const mongoose = require('mongoose');
 
-// Load environment variables
-try {
-  require('dotenv').config({ path: './config.env' });
-} catch (error) {
-  console.log('config.env not found, using default MongoDB URI');
-}
-
-// Try different connection string formats
-const MONGODB_URI = 'mongodb+srv://salmanfarooqi1272001:zEGciWrm7uBCYTLt@cluster0.gitehdr.mongodb.net/hims-college?retryWrites=true&w=majority';
-
-let isConnected = false;
-
 const connectDB = async () => {
-  if (isConnected) {
-    console.log('Already connected to MongoDB');
-    return;
-  }
-
   try {
-    console.log('Attempting to connect to MongoDB...');
-    
-    // Set mongoose options
-    mongoose.set('strictQuery', false);
-    
-    await mongoose.connect(MONGODB_URI, {
-      serverSelectionTimeoutMS: 60000,
-      socketTimeoutMS: 60000,
-      connectTimeoutMS: 60000,
+    await mongoose.connect('mongodb://alikhaninfo125:0Iozd8UY0NdEBsg3@cluster0-shard-00-00.dz7tc.mongodb.net:27017,cluster0-shard-00-01.dz7tc.mongodb.net:27017,cluster0-shard-00-02.dz7tc.mongodb.net:27017/hims-college?ssl=true&replicaSet=atlas-14b8sh-shard-0&authSource=admin&retryWrites=true&w=majority', {
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 5000,
+      connectTimeoutMS: 5000,
       maxPoolSize: 1,
-      minPoolSize: 1,
-      maxIdleTimeMS: 30000,
-      retryWrites: true,
-      retryReads: true,
-      w: 'majority',
-      readPreference: 'primary'
+      bufferCommands: false
     });
-    
-    isConnected = true;
-    console.log('MongoDB connected successfully');
-    
-    // Test the connection with a simple operation
-    try {
-      const db = mongoose.connection.db;
-      const collections = await db.listCollections().toArray();
-      console.log('Available collections:', collections.map(c => c.name));
-    } catch (testError) {
-      console.error('Connection test failed:', testError);
-    }
-    
-    // Handle connection events
-    mongoose.connection.on('error', (err) => {
-      console.error('MongoDB connection error:', err);
-      isConnected = false;
-    });
-    
-    mongoose.connection.on('disconnected', () => {
-      console.log('MongoDB disconnected');
-      isConnected = false;
-    });
-    
-    mongoose.connection.on('reconnected', () => {
-      console.log('MongoDB reconnected');
-      isConnected = true;
-    });
-    
+    console.log('✅ Connected to MongoDB successfully!');
   } catch (error) {
-    console.error('MongoDB connection error:', error);
-    isConnected = false;
+    console.error('❌ MongoDB connection error:', error.message);
     
-    // Try alternative connection if first fails
-    if (error.code === 'ETIMEOUT' || error.message.includes('queryTxt')) {
-      console.log('DNS timeout detected, trying alternative connection...');
-      try {
-        const altUri = 'mongodb+srv://salmanfarooqi1272001:zEGciWrm7uBCYTLt@cluster0.gitehdr.mongodb.net/hims-college?retryWrites=true&w=majority&directConnection=true';
-        await mongoose.connect(altUri, {
-          serverSelectionTimeoutMS: 30000,
-          socketTimeoutMS: 30000,
-          connectTimeoutMS: 30000
-        });
-        isConnected = true;
-        console.log('MongoDB connected with alternative method');
-      } catch (altError) {
-        console.error('Alternative connection also failed:', altError);
-      }
+    if (error.message.includes('IP that isn\'t whitelisted')) {
+      console.log('\n🔧 SOLUTION: You need to whitelist your IP address in MongoDB Atlas');
+      console.log('📋 Steps to fix:');
+      console.log('1. Go to MongoDB Atlas dashboard');
+      console.log('2. Navigate to Network Access');
+      console.log('3. Click "Add IP Address"');
+      console.log('4. Add your current IP or use "Allow Access from Anywhere" (0.0.0.0/0)');
+      console.log('5. Save the changes');
+      console.log('\n💡 For now, the fallback authentication system will work');
+      console.log('   Login with: hims@gmail.com / hims123');
     }
     
-    // Don't exit process on Vercel, just log the error
-    if (process.env.NODE_ENV !== 'production') {
-      process.exit(1);
-    }
+    // Don't exit the process, let the application continue with fallback
+    console.log('\n🔄 Continuing with fallback authentication system...');
   }
 };
 
-const getConnectionStatus = () => {
-  return isConnected && mongoose.connection.readyState === 1;
-};
-
-module.exports = { connectDB, mongoose, getConnectionStatus }; 
+module.exports = connectDB; 

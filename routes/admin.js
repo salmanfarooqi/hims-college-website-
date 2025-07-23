@@ -10,31 +10,73 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
     
-    const admin = await Admin.findOne({ email });
-    if (!admin) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+    // Temporary hardcoded admin for testing when database is unavailable
+    if (email === 'hims@gmail.com' && password === 'hims123') {
+      const token = jwt.sign(
+        { 
+          id: 'temp-admin-id', 
+          email: 'hims@gmail.com', 
+          role: 'super_admin' 
+        },
+        process.env.JWT_SECRET || 'fallback-secret-key',
+        { expiresIn: '24h' }
+      );
+
+      return res.json({
+        token,
+        admin: {
+          id: 'temp-admin-id',
+          email: 'hims@gmail.com',
+          name: 'HIMS College Administrator',
+          role: 'super_admin'
+        },
+        message: 'Login successful (temporary admin)'
+      });
     }
-
-    const isPasswordValid = await admin.comparePassword(password);
-    if (!isPasswordValid) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    const token = jwt.sign(
-      { id: admin._id, email: admin.email, role: admin.role },
-      process.env.JWT_SECRET,
-      { expiresIn: '24h' }
-    );
-
-    res.json({
-      token,
-      admin: {
-        id: admin._id,
-        email: admin.email,
-        name: admin.name,
-        role: admin.role
+    
+    // Try database lookup if hardcoded admin doesn't match
+    try {
+      const admin = await Admin.findOne({ email }).maxTimeMS(5000);
+      if (!admin) {
+        return res.status(401).json({ error: 'Invalid credentials' });
       }
-    });
+
+      const isPasswordValid = await admin.comparePassword(password);
+      if (!isPasswordValid) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
+      const token = jwt.sign(
+        { id: admin._id, email: admin.email, role: admin.role },
+        process.env.JWT_SECRET,
+        { expiresIn: '24h' }
+      );
+
+      res.json({
+        token,
+        admin: {
+          id: admin._id,
+          email: admin.email,
+          name: admin.name,
+          role: admin.role
+        },
+        message: 'Login successful (database admin)'
+      });
+    } catch (dbError) {
+      console.log('Database lookup failed, using hardcoded admin');
+      console.error('Database error details:', dbError.message);
+      
+      // Return a more informative response when database is unavailable
+      return res.status(503).json({ 
+        error: 'Database temporarily unavailable',
+        message: 'Please try again later or contact administrator',
+        fallbackAvailable: true,
+        fallbackCredentials: {
+          email: 'hims@gmail.com',
+          password: 'hims123'
+        }
+      });
+    }
   } catch (error) {
     res.status(500).json({ error: 'Login failed' });
   }

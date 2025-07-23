@@ -63,8 +63,7 @@ const studentSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Create index for efficient queries
-studentSchema.index({ email: 1 });
+// Create indexes for efficient queries (email index is automatically created by unique: true)
 studentSchema.index({ program: 1 });
 studentSchema.index({ status: 1 });
 

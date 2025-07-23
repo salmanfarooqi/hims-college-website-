@@ -3,7 +3,7 @@ const cors = require('cors');
 const path = require('path');
 require('dotenv').config({ path: './config.env' });
 
-const { connectDB } = require('./config/database');
+const connectDB = require('./config/database');
 const Application = require('./models/Application');
 const Admin = require('./models/Admin');
 const HeroSlide = require('./models/HeroSlide');
