@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const Application = require('../models/Application');
 const multer = require('multer');
 const path = require('path');
@@ -130,6 +131,20 @@ router.get('/', async (req, res) => {
 // Get application statistics
 router.get('/statistics', async (req, res) => {
   try {
+    // Check if database is connected
+    if (mongoose.connection.readyState !== 1) {
+      console.log('Database not connected, returning fallback statistics');
+      return res.json({
+        total: 0,
+        pending: 0,
+        approved: 0,
+        rejected: 0,
+        byProgram: [],
+        byMonth: [],
+        message: 'Database temporarily unavailable - showing fallback data'
+      });
+    }
+
     const totalApplications = await Application.countDocuments();
     const pendingApplications = await Application.countDocuments({ status: 'pending' });
     const approvedApplications = await Application.countDocuments({ status: 'approved' });
@@ -171,7 +186,18 @@ router.get('/statistics', async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching statistics:', error);
-    res.status(500).json({ error: 'Failed to fetch statistics' });
+    res.status(500).json({ 
+      error: 'Failed to fetch statistics',
+      message: 'Database connection issue. Please try again later.',
+      fallbackData: {
+        total: 0,
+        pending: 0,
+        approved: 0,
+        rejected: 0,
+        byProgram: [],
+        byMonth: []
+      }
+    });
   }
 });
 

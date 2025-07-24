@@ -2,12 +2,14 @@ const mongoose = require('mongoose');
 
 const connectDB = async () => {
   try {
-    await mongoose.connect('mongodb://alikhaninfo125:0Iozd8UY0NdEBsg3@cluster0-shard-00-00.dz7tc.mongodb.net:27017,cluster0-shard-00-01.dz7tc.mongodb.net:27017,cluster0-shard-00-02.dz7tc.mongodb.net:27017/hims-college?ssl=true&replicaSet=atlas-14b8sh-shard-0&authSource=admin&retryWrites=true&w=majority', {
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 5000,
-      connectTimeoutMS: 5000,
+    const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://salmanfarooqi1272001:zEGciWrm7uBCYTLt@cluster0.gitehdr.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
+    
+    await mongoose.connect(MONGODB_URI, {
+      serverSelectionTimeoutMS: 10000,
+      socketTimeoutMS: 10000,
+      connectTimeoutMS: 10000,
       maxPoolSize: 1,
-      bufferCommands: false
+      bufferCommands: true
     });
     console.log('✅ Connected to MongoDB successfully!');
   } catch (error) {

@@ -26,6 +26,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // Routes
 app.use('/api/applications', require('./routes/applications'));
 app.use('/api/admin', require('./routes/admin'));
+app.use('/admin/api', require('./routes/admin')); // Additional route for /admin/api pattern
 app.use('/api/content', require('./routes/content'));
 app.use('/api/teachers', require('./routes/teachers'));
 

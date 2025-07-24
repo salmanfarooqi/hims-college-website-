@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const Admin = require('../models/Admin');
 const Application = require('../models/Application');
 const auth = require('../middleware/auth');
@@ -146,6 +147,19 @@ router.patch('/applications/:id', auth, async (req, res) => {
 // Get application statistics
 router.get('/statistics', auth, async (req, res) => {
   try {
+    // Check if database is connected
+    if (mongoose.connection.readyState !== 1) {
+      console.log('Database not connected, returning fallback statistics');
+      return res.json({
+        total: 0,
+        pending: 0,
+        approved: 0,
+        rejected: 0,
+        programStats: [],
+        message: 'Database temporarily unavailable - showing fallback data'
+      });
+    }
+
     const totalApplications = await Application.countDocuments();
     const pendingApplications = await Application.countDocuments({ status: 'pending' });
     const approvedApplications = await Application.countDocuments({ status: 'approved' });
@@ -175,7 +189,18 @@ router.get('/statistics', auth, async (req, res) => {
       programStats
     });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch statistics' });
+    console.error('Error fetching admin statistics:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch statistics',
+      message: 'Database connection issue. Please try again later.',
+      fallbackData: {
+        total: 0,
+        pending: 0,
+        approved: 0,
+        rejected: 0,
+        programStats: []
+      }
+    });
   }
 });
 
