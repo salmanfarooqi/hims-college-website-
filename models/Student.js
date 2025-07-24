@@ -20,8 +20,9 @@ const studentSchema = new mongoose.Schema({
   },
   phone: {
     type: String,
-    required: true,
-    trim: true
+    required: false,
+    trim: true,
+    default: ''
   },
   dateOfBirth: {
     type: Date,
@@ -45,6 +46,35 @@ const studentSchema = new mongoose.Schema({
     type: String,
     enum: ['active', 'inactive', 'graduated'],
     default: 'active'
+  },
+  imageUrl: {
+    type: String,
+    default: ''
+  },
+  // Additional fields for student showcase
+  gpa: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  achievement: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  quote: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  awards: {
+    type: [String],
+    default: []
+  },
+  // Flag to identify showcase students vs regular applicants
+  isShowcaseStudent: {
+    type: Boolean,
+    default: false
   },
   address: {
     street: String,

@@ -11,11 +11,17 @@ const applicationSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
+  fatherName: {
+    type: String,
+    required: false,
+    trim: true
+  },
   email: {
     type: String,
     required: true,
     lowercase: true,
-    trim: true
+    trim: true,
+    unique: true
   },
   phone: {
     type: String,
@@ -37,23 +43,55 @@ const applicationSchema = new mongoose.Schema({
     trim: true
   },
   address: {
-    street: String,
-    city: String,
-    state: String,
-    zipCode: String,
-    country: String
+    type: String,
+    required: true,
+    trim: true
   },
-  education: {
-    institution: String,
-    degree: String,
-    yearCompleted: Number,
-    gpa: Number
+  city: {
+    type: String,
+    required: true,
+    trim: true
   },
-  documents: {
-    photo: String,
-    idProof: String,
-    academicRecords: [String],
-    otherDocuments: [String]
+  state: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  zipCode: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  previousSchool: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  previousGrade: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  // Payment Information
+  paymentAmount: {
+    type: String,
+    required: true,
+    default: '200'
+  },
+  easypaisaNumber: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  transactionId: {
+    type: String,
+    required: true,
+    trim: true,
+    unique: true
+  },
+  transactionReceipt: {
+    type: String,
+    required: true
   },
   status: {
     type: String,
@@ -72,8 +110,9 @@ const applicationSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Create index for efficient queries
-applicationSchema.index({ email: 1 });
+// Create unique indexes for efficient queries and prevent duplicates
+applicationSchema.index({ email: 1 }, { unique: true });
+applicationSchema.index({ transactionId: 1 }, { unique: true });
 applicationSchema.index({ status: 1 });
 applicationSchema.index({ program: 1 });
 applicationSchema.index({ createdAt: -1 });

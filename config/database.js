@@ -1,35 +1,100 @@
 const mongoose = require('mongoose');
 
-const connectDB = async () => {
+// Connection options for optimal performance (updated for Mongoose 8.x)
+const connectionOptions = {
+  maxPoolSize: 10, // Maintain up to 10 socket connections
+  serverSelectionTimeoutMS: 10000, // Keep trying to send operations for 10 seconds
+  socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
+  connectTimeoutMS: 10000, // Give up initial connection after 10 seconds
+  // Removed deprecated buffer options that are not supported in newer Mongoose versions
+  retryWrites: true,
+  w: 'majority'
+};
+
+let isConnected = false;
+
+const connectDB = async (retries = 3) => {
+  if (isConnected) {
+    console.log('✅ Using existing MongoDB connection');
+    return;
+  }
+
   try {
-    const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://salmanfarooqi1272001:zEGciWrm7uBCYTLt@cluster0.gitehdr.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
+    const MONGODB_URI = process.env.MONGODB_URI;
     
-    await mongoose.connect(MONGODB_URI, {
-      serverSelectionTimeoutMS: 10000,
-      socketTimeoutMS: 10000,
-      connectTimeoutMS: 10000,
-      maxPoolSize: 1,
-      bufferCommands: true
-    });
+    if (!MONGODB_URI) {
+      throw new Error('MONGODB_URI environment variable is not defined');
+    }
+
+    console.log('🔄 Attempting to connect to MongoDB...');
+    
+    const conn = await mongoose.connect(MONGODB_URI, connectionOptions);
+    
+    isConnected = true;
     console.log('✅ Connected to MongoDB successfully!');
+    console.log(`📍 Database: ${conn.connection.name}`);
+    console.log(`🌐 Host: ${conn.connection.host}:${conn.connection.port}`);
+    
+    // Handle connection events
+    mongoose.connection.on('disconnected', () => {
+      console.log('⚠️ MongoDB disconnected');
+      isConnected = false;
+    });
+
+    mongoose.connection.on('error', (err) => {
+      console.error('❌ MongoDB connection error:', err);
+      isConnected = false;
+    });
+
+    mongoose.connection.on('reconnected', () => {
+      console.log('✅ MongoDB reconnected');
+      isConnected = true;
+    });
+
+    return conn;
+    
   } catch (error) {
     console.error('❌ MongoDB connection error:', error.message);
+    isConnected = false;
     
-    if (error.message.includes('IP that isn\'t whitelisted')) {
-      console.log('\n🔧 SOLUTION: You need to whitelist your IP address in MongoDB Atlas');
-      console.log('📋 Steps to fix:');
-      console.log('1. Go to MongoDB Atlas dashboard');
-      console.log('2. Navigate to Network Access');
-      console.log('3. Click "Add IP Address"');
-      console.log('4. Add your current IP or use "Allow Access from Anywhere" (0.0.0.0/0)');
-      console.log('5. Save the changes');
-      console.log('\n💡 For now, the fallback authentication system will work');
-      console.log('   Login with: hims@gmail.com / hims123');
+    // Provide specific error guidance
+    if (error.message.includes('IP') || error.message.includes('whitelist')) {
+      console.log('\n🔧 IP WHITELIST ISSUE:');
+      console.log('1. Go to MongoDB Atlas → Network Access');
+      console.log('2. Add your current IP address');
+      console.log('3. Or use 0.0.0.0/0 for development (not recommended for production)');
+    } else if (error.message.includes('authentication')) {
+      console.log('\n🔧 AUTHENTICATION ISSUE:');
+      console.log('1. Check your username and password in MONGODB_URI');
+      console.log('2. Ensure the database user has proper permissions');
+    } else if (error.message.includes('ENOTFOUND') || error.message.includes('timeout')) {
+      console.log('\n🔧 NETWORK ISSUE:');
+      console.log('1. Check your internet connection');
+      console.log('2. Verify the cluster URL is correct');
+      console.log('3. Try using a VPN if behind a firewall');
     }
     
-    // Don't exit the process, let the application continue with fallback
+    if (retries > 0) {
+      console.log(`🔄 Retrying connection... (${retries} attempts left)`);
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      return connectDB(retries - 1);
+    }
+    
     console.log('\n🔄 Continuing with fallback authentication system...');
+    console.log('⚠️ Some features may not work without database connection');
+    
+    // Don't throw error, let app continue with fallback
+    return null;
   }
 };
 
-module.exports = connectDB; 
+// Graceful shutdown
+const closeConnection = async () => {
+  if (isConnected) {
+    await mongoose.connection.close();
+    isConnected = false;
+    console.log('✅ MongoDB connection closed');
+  }
+};
+
+module.exports = { connectDB, closeConnection, isConnected: () => isConnected }; 

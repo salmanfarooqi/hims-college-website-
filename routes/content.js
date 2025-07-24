@@ -15,7 +15,18 @@ const storage = multer.diskStorage({
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'hero-slide-' + uniqueSuffix + path.extname(file.originalname));
+    let prefix = 'image';
+    
+    // Determine file prefix based on the route
+    if (req.route && req.route.path.includes('hero-slides')) {
+      prefix = 'hero-slide';
+    } else if (req.route && req.route.path.includes('teachers')) {
+      prefix = 'teacher';
+    } else if (req.route && req.route.path.includes('students')) {
+      prefix = 'student';
+    }
+    
+    cb(null, prefix + '-' + uniqueSuffix + path.extname(file.originalname));
   }
 });
 
@@ -25,66 +36,47 @@ const upload = multer({
     fileSize: 5 * 1024 * 1024 // 5MB limit
   },
   fileFilter: function (req, file, cb) {
-    const allowedTypes = /jpeg|jpg|png/;
+    console.log('File upload attempt:', {
+      fieldname: file.fieldname,
+      originalname: file.originalname,
+      mimetype: file.mimetype
+    });
+    
+    // Allow more image formats
+    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    const allowedMimeTypes = /image\/(jpeg|jpg|png|gif|webp)/;
+    
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
+    const mimetype = allowedMimeTypes.test(file.mimetype);
     
     if (mimetype && extname) {
+      console.log('File accepted:', file.originalname);
       return cb(null, true);
     } else {
-      cb(new Error('Only image files are allowed!'));
+      console.log('File rejected:', {
+        originalname: file.originalname,
+        mimetype: file.mimetype,
+        extension: path.extname(file.originalname)
+      });
+      cb(new Error(`Only image files (JPEG, PNG, GIF, WebP) are allowed! Received: ${file.mimetype}`));
     }
   }
 });
-
-// Fallback hero slides data
-const fallbackSlides = [
-  {
-    title: 'Welcome to HIMS College',
-    subtitle: 'Excellence in Education',
-    description: 'Join us for a world-class education experience with state-of-the-art facilities and expert faculty.',
-    imageUrl: 'https://images.unsplash.com/photo-1523050854058-8df90110c9a1?w=800',
-    buttonText: 'Apply Now',
-    buttonLink: '/apply',
-    order: 1,
-    isActive: true
-  },
-  {
-    title: 'Modern Learning Environment',
-    subtitle: 'Cutting-edge Technology',
-    description: 'Experience learning with the latest technology and innovative teaching methods.',
-    imageUrl: 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=800',
-    buttonText: 'Learn More',
-    buttonLink: '/programs',
-    order: 2,
-    isActive: true
-  },
-  {
-    title: 'Expert Faculty',
-    subtitle: 'Industry Professionals',
-    description: 'Learn from experienced professionals who bring real-world expertise to the classroom.',
-    imageUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800',
-    buttonText: 'Meet Our Faculty',
-    buttonLink: '/faculty',
-    order: 3,
-    isActive: true
-  }
-];
 
 // Helper function to check if database is ready
 const isDatabaseReady = () => {
   return mongoose.connection.readyState === 1;
 };
 
-// Get all active hero slides (public)
+// Get all active hero slides (public) - Dynamic only, no hardcoded content
 router.get('/hero-slides', async (req, res) => {
   try {
-    console.log('Fetching hero slides...');
+    console.log('Fetching hero slides from database...');
     
     // Check if database is ready
     if (!isDatabaseReady()) {
-      console.log('Database not ready, returning fallback data');
-      return res.json(fallbackSlides);
+      console.log('Database not ready, returning empty array');
+      return res.json([]);
     }
     
     // Use a timeout promise to handle database operations
@@ -93,56 +85,11 @@ router.get('/hero-slides', async (req, res) => {
     });
     
     const dbOperation = async () => {
-      // Check if we have any slides, if not create sample data
-      const slideCount = await HeroSlide.countDocuments();
-      console.log(`Found ${slideCount} existing slides`);
-      
-      if (slideCount === 0) {
-        console.log('No hero slides found, creating sample data...');
-        
-        // Create sample hero slides
-        const sampleSlides = [
-          {
-            title: 'Welcome to HIMS College',
-            subtitle: 'Excellence in Education',
-            description: 'Join us for a world-class education experience with state-of-the-art facilities and expert faculty.',
-            imageUrl: 'https://images.unsplash.com/photo-1523050854058-8df90110c9a1?w=800',
-            buttonText: 'Apply Now',
-            buttonLink: '/apply',
-            order: 1,
-            isActive: true
-          },
-          {
-            title: 'Modern Learning Environment',
-            subtitle: 'Cutting-edge Technology',
-            description: 'Experience learning with the latest technology and innovative teaching methods.',
-            imageUrl: 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=800',
-            buttonText: 'Learn More',
-            buttonLink: '/programs',
-            order: 2,
-            isActive: true
-          },
-          {
-            title: 'Expert Faculty',
-            subtitle: 'Industry Professionals',
-            description: 'Learn from experienced professionals who bring real-world expertise to the classroom.',
-            imageUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800',
-            buttonText: 'Meet Our Faculty',
-            buttonLink: '/faculty',
-            order: 3,
-            isActive: true
-          }
-        ];
-
-        await HeroSlide.insertMany(sampleSlides);
-        console.log('Sample hero slides created successfully');
-      }
-
       const slides = await HeroSlide.find({ isActive: true })
         .sort({ order: 1 })
         .select('-__v');
       
-      console.log(`Returning ${slides.length} active hero slides`);
+      console.log(`Returning ${slides.length} active hero slides from database`);
       return slides;
     };
     
@@ -153,9 +100,9 @@ router.get('/hero-slides', async (req, res) => {
   } catch (error) {
     console.error('Error fetching hero slides:', error);
     
-    // Return fallback data if database fails
-    console.log('Returning fallback hero slides due to database error');
-    res.json(fallbackSlides);
+    // Return empty array if database fails - no hardcoded content
+    console.log('Returning empty array due to database error');
+    res.json([]);
   }
 });
 
@@ -187,8 +134,6 @@ router.post('/admin/hero-slides', auth, upload.single('image'), async (req, res)
       title,
       subtitle,
       description,
-      buttonText,
-      buttonLink,
       order,
       isActive
     } = req.body;
@@ -197,9 +142,7 @@ router.post('/admin/hero-slides', auth, upload.single('image'), async (req, res)
       title,
       subtitle,
       description,
-      imageUrl: req.file ? req.file.path : '',
-      buttonText,
-      buttonLink,
+      imageUrl: req.file ? `/uploads/${req.file.filename}` : '',
       order: order || 0,
       isActive: isActive !== 'false'
     });
@@ -223,8 +166,6 @@ router.put('/admin/hero-slides/:id', auth, upload.single('image'), async (req, r
       title,
       subtitle,
       description,
-      buttonText,
-      buttonLink,
       order,
       isActive
     } = req.body;
@@ -237,13 +178,11 @@ router.put('/admin/hero-slides/:id', auth, upload.single('image'), async (req, r
     slide.title = title || slide.title;
     slide.subtitle = subtitle || slide.subtitle;
     slide.description = description || slide.description;
-    slide.buttonText = buttonText || slide.buttonText;
-    slide.buttonLink = buttonLink || slide.buttonLink;
     slide.order = order !== undefined ? order : slide.order;
     slide.isActive = isActive !== undefined ? isActive : slide.isActive;
 
     if (req.file) {
-      slide.imageUrl = req.file.path;
+      slide.imageUrl = `/uploads/${req.file.filename}`;
     }
 
     await slide.save();
@@ -304,9 +243,9 @@ router.get('/teachers', async (req, res) => {
       return res.json([]);
     }
     
-    const teachers = await Teacher.find({ status: 'active' })
+    const teachers = await Teacher.find({ isActive: true })
       .select('-__v')
-      .sort({ lastName: 1, firstName: 1 });
+      .sort({ order: 1, name: 1 });
     
     console.log(`Returning ${teachers.length} active teachers`);
     res.json(teachers);
@@ -388,7 +327,7 @@ router.get('/admin/teachers', auth, async (req, res) => {
     
     const teachers = await Teacher.find()
       .select('-__v')
-      .sort({ lastName: 1, firstName: 1 });
+      .sort({ order: 1, name: 1 });
     
     res.json(teachers);
   } catch (error) {
@@ -416,32 +355,135 @@ router.get('/admin/students', auth, async (req, res) => {
 });
 
 // Create new teacher (admin only)
-router.post('/admin/teachers', auth, async (req, res) => {
+router.post('/admin/teachers', auth, upload.single('image'), async (req, res) => {
   try {
     if (!isDatabaseReady()) {
       return res.status(503).json({ error: 'Database not available' });
     }
     
-    const teacher = new Teacher(req.body);
+    const {
+      name,
+      position,
+      expertise,
+      description,
+      rating,
+      order,
+      email,
+      phone,
+      department,
+      qualifications,
+      experience
+    } = req.body;
+
+    console.log('Teacher creation request:', {
+      name,
+      position, 
+      expertise,
+      email,
+      phone,
+      hasImage: !!req.file
+    });
+
+    // Validate required fields for teachers
+    if (!name || !position || !expertise) {
+      return res.status(400).json({ 
+        error: 'Missing required fields',
+        details: 'name, position, and expertise are required for teachers'
+      });
+    }
+
+    // Create teacher object with proper field mapping
+    const teacherData = {
+      name: name.trim(),
+      position: position.trim(),
+      expertise: expertise.trim(),
+      description: description ? description.trim() : `Experienced ${position} specializing in ${expertise}`,
+      rating: rating ? parseFloat(rating) : 5.0,
+      order: order ? parseInt(order) : 0,
+      imageUrl: req.file ? `/uploads/${req.file.filename}` : '',
+      isActive: true,
+      // Optional fields - only include if provided and not empty
+      email: email && email.trim() !== '' ? email.trim() : null,
+      phone: phone ? phone.trim() : '',
+      department: department ? department.trim() : (expertise ? expertise.trim() : ''),
+      qualifications: qualifications ? qualifications.trim() : '',
+      experience: experience ? experience.trim() : ''
+    };
+
+    console.log('Creating teacher with data:', teacherData);
+
+    const teacher = new Teacher(teacherData);
     await teacher.save();
+    
+    console.log('Teacher created successfully:', teacher._id);
     
     res.status(201).json({ message: 'Teacher created successfully', teacher });
   } catch (error) {
     console.error('Error creating teacher:', error);
-    res.status(500).json({ error: 'Failed to create teacher' });
+    res.status(500).json({ 
+      error: 'Failed to create teacher',
+      details: error.message 
+    });
   }
 });
 
 // Update teacher (admin only)
-router.put('/admin/teachers/:id', auth, async (req, res) => {
+router.put('/admin/teachers/:id', auth, upload.single('image'), async (req, res) => {
   try {
     if (!isDatabaseReady()) {
       return res.status(503).json({ error: 'Database not available' });
     }
     
+    const {
+      name,
+      position,
+      expertise,
+      description,
+      rating,
+      order,
+      isActive,
+      email,
+      phone,
+      department,
+      qualifications,
+      experience
+    } = req.body;
+
+    // Build update object with proper field handling
+    const updateData = {};
+    
+    // Required fields - only update if provided
+    if (name && name.trim()) updateData.name = name.trim();
+    if (position && position.trim()) updateData.position = position.trim();
+    if (expertise && expertise.trim()) updateData.expertise = expertise.trim();
+    
+    // Optional fields
+    if (description !== undefined) {
+      updateData.description = description.trim() || `Experienced ${position || 'educator'} specializing in ${expertise || 'their field'}`;
+    }
+    if (rating !== undefined) updateData.rating = rating ? parseFloat(rating) : 5;
+    if (order !== undefined) updateData.order = order ? parseInt(order) : 0;
+    if (isActive !== undefined) updateData.isActive = isActive !== false;
+    
+    // Handle email properly to avoid duplicate key errors
+    if (email !== undefined) {
+      updateData.email = email && email.trim() !== '' ? email.trim() : null;
+    }
+    
+    // Other optional fields
+    if (phone !== undefined) updateData.phone = phone ? phone.trim() : '';
+    if (department !== undefined) updateData.department = department ? department.trim() : '';
+    if (qualifications !== undefined) updateData.qualifications = qualifications ? qualifications.trim() : '';
+    if (experience !== undefined) updateData.experience = experience ? experience.trim() : '';
+
+    // Add image URL if new image was uploaded
+    if (req.file) {
+      updateData.imageUrl = `/uploads/${req.file.filename}`;
+    }
+    
     const teacher = await Teacher.findByIdAndUpdate(
       req.params.id,
-      req.body,
+      updateData,
       { new: true, runValidators: true }
     );
     
@@ -452,7 +494,10 @@ router.put('/admin/teachers/:id', auth, async (req, res) => {
     res.json({ message: 'Teacher updated successfully', teacher });
   } catch (error) {
     console.error('Error updating teacher:', error);
-    res.status(500).json({ error: 'Failed to update teacher' });
+    res.status(500).json({ 
+      error: 'Failed to update teacher',
+      details: error.message 
+    });
   }
 });
 
@@ -476,43 +521,191 @@ router.delete('/admin/teachers/:id', auth, async (req, res) => {
 });
 
 // Create new student (admin only)
-router.post('/admin/students', auth, async (req, res) => {
+router.post('/admin/students', auth, upload.single('image'), async (req, res) => {
   try {
     if (!isDatabaseReady()) {
       return res.status(503).json({ error: 'Database not available' });
     }
     
-    const student = new Student(req.body);
+    // Log the incoming request data for debugging
+    console.log('Student creation request body:', req.body);
+    console.log('Student creation request file:', req.file ? req.file.filename : 'No file');
+
+    const {
+      name,           // From admin form it sends 'name', not firstName/lastName
+      firstName,
+      lastName,
+      email,
+      phone,
+      dateOfBirth,
+      gender,
+      program,
+      status,
+      gpa,
+      achievement,
+      quote,
+      awards
+    } = req.body;
+
+    // Handle name field that might come as a single field or separate firstName/lastName
+    let finalFirstName = firstName;
+    let finalLastName = lastName;
+    
+    if (name && name.trim()) {
+      const nameParts = name.trim().split(' ');
+      finalFirstName = nameParts[0] || 'Student';
+      finalLastName = nameParts.slice(1).join(' ') || 'Student';
+    } else if (firstName && firstName.trim()) {
+      finalFirstName = firstName.trim();
+      finalLastName = lastName ? lastName.trim() : 'Student';
+    }
+
+    // Generate email for showcase students if not provided
+    let finalEmail = email;
+    let isShowcaseStudent = false;
+    if (!email || email.trim() === '') {
+      // For showcase students, generate a unique dummy email
+      const timestamp = Date.now();
+      const nameSlug = (name || finalFirstName || 'student').toLowerCase().replace(/\s+/g, '');
+      finalEmail = `showcase.${nameSlug}.${timestamp}@hims.showcase`;
+      isShowcaseStudent = true;
+      console.log('Generated showcase email:', finalEmail);
+    }
+
+    // Validate required fields - now with better validation
+    if (!finalFirstName || !program) {
+      console.log('Validation failed:', { finalFirstName, program });
+      return res.status(400).json({ 
+        error: 'Missing required fields',
+        details: 'name (or firstName) and program are required for students',
+        received: {
+          name: name || 'not provided',
+          firstName: firstName || 'not provided', 
+          program: program || 'not provided'
+        }
+      });
+    }
+
+    // Create student object with proper field mapping
+    const studentData = {
+      firstName: finalFirstName,
+      lastName: finalLastName || 'Student',
+      email: finalEmail.trim(),
+      phone: phone ? phone.trim() : '',
+      dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : new Date('2000-01-01'),
+      gender: gender || 'other',
+      program: program.trim(),
+      status: status || 'active',
+      imageUrl: req.file ? `/uploads/${req.file.filename}` : '',
+      // Additional fields for student showcase
+      gpa: gpa || '',
+      achievement: achievement || '',
+      quote: quote || '',
+      awards: awards ? (typeof awards === 'string' ? JSON.parse(awards) : awards) : [],
+      isShowcaseStudent: isShowcaseStudent
+    };
+
+    console.log('Creating student with data:', studentData);
+
+    const student = new Student(studentData);
     await student.save();
+    
+    console.log('Student created successfully:', student._id);
     
     res.status(201).json({ message: 'Student created successfully', student });
   } catch (error) {
     console.error('Error creating student:', error);
-    res.status(500).json({ error: 'Failed to create student' });
+    res.status(500).json({ 
+      error: 'Failed to create student',
+      details: error.message 
+    });
   }
 });
 
 // Update student (admin only)
-router.put('/admin/students/:id', auth, async (req, res) => {
+router.put('/admin/students/:id', auth, upload.single('image'), async (req, res) => {
   try {
     if (!isDatabaseReady()) {
       return res.status(503).json({ error: 'Database not available' });
     }
+
+    // Log the incoming request data for debugging
+    console.log('Student update request body:', req.body);
+    console.log('Student update request file:', req.file ? req.file.filename : 'No file');
+
+    const {
+      name,
+      firstName,
+      lastName,
+      email,
+      phone,
+      dateOfBirth,
+      gender,
+      program,
+      status,
+      gpa,
+      achievement,
+      quote,
+      awards
+    } = req.body;
+
+    // Handle name field that might come as a single field or separate firstName/lastName
+    let finalFirstName = firstName;
+    let finalLastName = lastName;
+    
+    if (name && name.trim()) {
+      const nameParts = name.trim().split(' ');
+      finalFirstName = nameParts[0] || 'Student';
+      finalLastName = nameParts.slice(1).join(' ') || 'Student';
+    } else if (firstName && firstName.trim()) {
+      finalFirstName = firstName.trim();
+      finalLastName = lastName ? lastName.trim() : 'Student';
+    }
+
+    // Build update object - only update provided fields
+    const updateData = {};
+    
+    if (finalFirstName) updateData.firstName = finalFirstName;
+    if (finalLastName) updateData.lastName = finalLastName;
+    if (email) updateData.email = email.trim();
+    if (phone !== undefined) updateData.phone = phone ? phone.trim() : '';
+    if (dateOfBirth) updateData.dateOfBirth = new Date(dateOfBirth);
+    if (gender) updateData.gender = gender;
+    if (program) updateData.program = program.trim();
+    if (status) updateData.status = status;
+    if (gpa !== undefined) updateData.gpa = gpa;
+    if (achievement !== undefined) updateData.achievement = achievement;
+    if (quote !== undefined) updateData.quote = quote;
+    if (awards !== undefined) {
+      updateData.awards = awards ? (typeof awards === 'string' ? JSON.parse(awards) : awards) : [];
+    }
+
+    // Add image URL if new image was uploaded
+    if (req.file) {
+      updateData.imageUrl = `/uploads/${req.file.filename}`;
+    }
+
+    console.log('Updating student with data:', updateData);
     
     const student = await Student.findByIdAndUpdate(
       req.params.id,
-      req.body,
+      updateData,
       { new: true, runValidators: true }
     );
     
     if (!student) {
       return res.status(404).json({ error: 'Student not found' });
     }
+
+    console.log('Student updated successfully:', student._id);
     
     res.json({ message: 'Student updated successfully', student });
   } catch (error) {
     console.error('Error updating student:', error);
-    res.status(500).json({ error: 'Failed to update student' });
+    res.status(500).json({ 
+      error: 'Failed to update student',
+      details: error.message 
+    });
   }
 });
 

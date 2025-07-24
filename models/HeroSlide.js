@@ -18,14 +18,6 @@ const heroSlideSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  buttonText: {
-    type: String,
-    trim: true
-  },
-  buttonLink: {
-    type: String,
-    trim: true
-  },
   order: {
     type: Number,
     default: 0

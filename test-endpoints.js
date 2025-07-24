@@ -1,46 +1,68 @@
-const axios = require('axios');
+const http = require('http');
 
-const BASE_URL = 'http://localhost:5000';
+const testEndpoint = (path) => {
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: 'localhost',
+      port: 5000,
+      path: path,
+      method: 'GET'
+    };
 
-async function testEndpoints() {
+    const req = http.request(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+      res.on('end', () => {
+        try {
+          const jsonData = JSON.parse(data);
+          resolve({ status: res.statusCode, data: jsonData });
+        } catch (e) {
+          resolve({ status: res.statusCode, data: data });
+        }
+      });
+    });
+
+    req.on('error', (err) => {
+      reject(err);
+    });
+
+    req.end();
+  });
+};
+
+const runTests = async () => {
   console.log('Testing API endpoints...\n');
 
   try {
     // Test health endpoint
     console.log('1. Testing health endpoint...');
-    const healthResponse = await axios.get(`${BASE_URL}/api/health`);
-    console.log('✅ Health endpoint working:', healthResponse.data);
+    const health = await testEndpoint('/api/health');
+    console.log('Health:', health.status, health.data);
+    console.log('');
 
-    // Test content/teachers endpoint
-    console.log('\n2. Testing /api/content/teachers endpoint...');
-    try {
-      const teachersResponse = await axios.get(`${BASE_URL}/api/content/teachers`);
-      console.log('✅ Teachers endpoint working:', teachersResponse.data);
-    } catch (error) {
-      console.log('❌ Teachers endpoint failed:', error.response?.data || error.message);
-    }
+    // Test teachers endpoint
+    console.log('2. Testing teachers endpoint...');
+    const teachers = await testEndpoint('/api/teachers');
+    console.log('Teachers:', teachers.status, teachers.data);
+    console.log('');
 
-    // Test content/students endpoint
-    console.log('\n3. Testing /api/content/students endpoint...');
-    try {
-      const studentsResponse = await axios.get(`${BASE_URL}/api/content/students`);
-      console.log('✅ Students endpoint working:', studentsResponse.data);
-    } catch (error) {
-      console.log('❌ Students endpoint failed:', error.response?.data || error.message);
-    }
+    // Test applications statistics
+    console.log('3. Testing applications statistics...');
+    const stats = await testEndpoint('/api/applications/statistics');
+    console.log('Statistics:', stats.status, stats.data);
+    console.log('');
 
-    // Test hero-slides endpoint for comparison
-    console.log('\n4. Testing /api/content/hero-slides endpoint...');
-    try {
-      const slidesResponse = await axios.get(`${BASE_URL}/api/content/hero-slides`);
-      console.log('✅ Hero slides endpoint working:', slidesResponse.data);
-    } catch (error) {
-      console.log('❌ Hero slides endpoint failed:', error.response?.data || error.message);
-    }
+    // Test admin applications (should work with fallback)
+    console.log('4. Testing admin applications...');
+    const adminApps = await testEndpoint('/admin/api/applications');
+    console.log('Admin Apps:', adminApps.status, adminApps.data);
+    console.log('');
 
   } catch (error) {
-    console.error('❌ Test failed:', error.message);
+    console.error('Test failed:', error.message);
   }
-}
+};
 
-testEndpoints(); 
+runTests(); 

@@ -16,8 +16,12 @@ router.get('/', async (req, res) => {
     
     // Check if database is ready
     if (!isDatabaseReady()) {
-      console.log('Database not ready, returning empty array');
-      return res.json([]);
+      console.log('Database not ready, returning fallback data');
+      return res.json({
+        teachers: [],
+        message: 'Database temporarily unavailable - showing fallback data',
+        fallback: true
+      });
     }
     
     const teachers = await Teacher.find({ status: 'active' })
@@ -25,11 +29,21 @@ router.get('/', async (req, res) => {
       .sort({ lastName: 1, firstName: 1 });
     
     console.log(`Returning ${teachers.length} active teachers`);
-    res.json(teachers);
+    res.json({
+      teachers,
+      fallback: false
+    });
     
   } catch (error) {
     console.error('Error fetching teachers:', error);
-    res.status(500).json({ error: 'Failed to fetch teachers' });
+    res.status(500).json({ 
+      error: 'Failed to fetch teachers',
+      message: 'Database connection issue. Please try again later.',
+      fallbackData: {
+        teachers: [],
+        fallback: true
+      }
+    });
   }
 });
 
@@ -37,7 +51,11 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     if (!isDatabaseReady()) {
-      return res.status(503).json({ error: 'Database not available' });
+      console.log('Database not ready, returning fallback teacher data');
+      return res.json({
+        message: 'Database temporarily unavailable - showing fallback data',
+        fallback: true
+      });
     }
     
     const teacher = await Teacher.findById(req.params.id).select('-__v');
@@ -45,10 +63,17 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Teacher not found' });
     }
     
-    res.json(teacher);
+    res.json({
+      ...teacher.toObject(),
+      fallback: false
+    });
   } catch (error) {
     console.error('Error fetching teacher:', error);
-    res.status(500).json({ error: 'Failed to fetch teacher' });
+    res.status(500).json({ 
+      error: 'Failed to fetch teacher',
+      message: 'Database connection issue. Please try again later.',
+      fallback: true
+    });
   }
 });
 
@@ -56,17 +81,32 @@ router.get('/:id', async (req, res) => {
 router.get('/admin/all', auth, async (req, res) => {
   try {
     if (!isDatabaseReady()) {
-      return res.status(503).json({ error: 'Database not available' });
+      console.log('Database not ready, returning fallback admin teachers data');
+      return res.json({
+        teachers: [],
+        message: 'Database temporarily unavailable - showing fallback data',
+        fallback: true
+      });
     }
     
     const teachers = await Teacher.find()
       .select('-__v')
       .sort({ lastName: 1, firstName: 1 });
     
-    res.json(teachers);
+    res.json({
+      teachers,
+      fallback: false
+    });
   } catch (error) {
     console.error('Error fetching admin teachers:', error);
-    res.status(500).json({ error: 'Failed to fetch teachers' });
+    res.status(500).json({ 
+      error: 'Failed to fetch teachers',
+      message: 'Database connection issue. Please try again later.',
+      fallbackData: {
+        teachers: [],
+        fallback: true
+      }
+    });
   }
 });
 
@@ -74,16 +114,29 @@ router.get('/admin/all', auth, async (req, res) => {
 router.post('/admin', auth, async (req, res) => {
   try {
     if (!isDatabaseReady()) {
-      return res.status(503).json({ error: 'Database not available' });
+      console.log('Database not ready, cannot create teacher');
+      return res.status(503).json({ 
+        error: 'Database not available',
+        message: 'Cannot create teacher while database is unavailable. Please try again later.',
+        fallback: true
+      });
     }
     
     const teacher = new Teacher(req.body);
     await teacher.save();
     
-    res.status(201).json({ message: 'Teacher created successfully', teacher });
+    res.status(201).json({ 
+      message: 'Teacher created successfully', 
+      teacher,
+      fallback: false
+    });
   } catch (error) {
     console.error('Error creating teacher:', error);
-    res.status(500).json({ error: 'Failed to create teacher' });
+    res.status(500).json({ 
+      error: 'Failed to create teacher',
+      message: 'Database connection issue or validation error. Please check your data and try again.',
+      details: error.message
+    });
   }
 });
 
@@ -91,7 +144,12 @@ router.post('/admin', auth, async (req, res) => {
 router.put('/admin/:id', auth, async (req, res) => {
   try {
     if (!isDatabaseReady()) {
-      return res.status(503).json({ error: 'Database not available' });
+      console.log('Database not ready, cannot update teacher');
+      return res.status(503).json({ 
+        error: 'Database not available',
+        message: 'Cannot update teacher while database is unavailable. Please try again later.',
+        fallback: true
+      });
     }
     
     const teacher = await Teacher.findByIdAndUpdate(
@@ -104,10 +162,18 @@ router.put('/admin/:id', auth, async (req, res) => {
       return res.status(404).json({ error: 'Teacher not found' });
     }
     
-    res.json({ message: 'Teacher updated successfully', teacher });
+    res.json({ 
+      message: 'Teacher updated successfully', 
+      teacher,
+      fallback: false
+    });
   } catch (error) {
     console.error('Error updating teacher:', error);
-    res.status(500).json({ error: 'Failed to update teacher' });
+    res.status(500).json({ 
+      error: 'Failed to update teacher',
+      message: 'Database connection issue or validation error. Please check your data and try again.',
+      details: error.message
+    });
   }
 });
 
@@ -115,7 +181,12 @@ router.put('/admin/:id', auth, async (req, res) => {
 router.delete('/admin/:id', auth, async (req, res) => {
   try {
     if (!isDatabaseReady()) {
-      return res.status(503).json({ error: 'Database not available' });
+      console.log('Database not ready, cannot delete teacher');
+      return res.status(503).json({ 
+        error: 'Database not available',
+        message: 'Cannot delete teacher while database is unavailable. Please try again later.',
+        fallback: true
+      });
     }
     
     const teacher = await Teacher.findByIdAndDelete(req.params.id);
@@ -123,10 +194,17 @@ router.delete('/admin/:id', auth, async (req, res) => {
       return res.status(404).json({ error: 'Teacher not found' });
     }
     
-    res.json({ message: 'Teacher deleted successfully' });
+    res.json({ 
+      message: 'Teacher deleted successfully',
+      fallback: false
+    });
   } catch (error) {
     console.error('Error deleting teacher:', error);
-    res.status(500).json({ error: 'Failed to delete teacher' });
+    res.status(500).json({ 
+      error: 'Failed to delete teacher',
+      message: 'Database connection issue. Please try again later.',
+      details: error.message
+    });
   }
 });
 
@@ -134,7 +212,16 @@ router.delete('/admin/:id', auth, async (req, res) => {
 router.get('/admin/stats', auth, async (req, res) => {
   try {
     if (!isDatabaseReady()) {
-      return res.status(503).json({ error: 'Database not available' });
+      console.log('Database not ready, returning fallback teacher statistics');
+      return res.json({
+        total: 0,
+        active: 0,
+        inactive: 0,
+        retired: 0,
+        departmentStats: [],
+        message: 'Database temporarily unavailable - showing fallback data',
+        fallback: true
+      });
     }
     
     const totalTeachers = await Teacher.countDocuments();
@@ -163,11 +250,22 @@ router.get('/admin/stats', auth, async (req, res) => {
       active: activeTeachers,
       inactive: inactiveTeachers,
       retired: retiredTeachers,
-      departmentStats
+      departmentStats,
+      fallback: false
     });
   } catch (error) {
     console.error('Error fetching teacher statistics:', error);
-    res.status(500).json({ error: 'Failed to fetch teacher statistics' });
+    res.status(500).json({ 
+      error: 'Failed to fetch teacher statistics',
+      message: 'Database connection issue. Please try again later.',
+      fallbackData: {
+        total: 0,
+        active: 0,
+        inactive: 0,
+        retired: 0,
+        departmentStats: []
+      }
+    });
   }
 });
 

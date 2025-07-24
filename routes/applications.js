@@ -22,25 +22,20 @@ const upload = multer({
     fileSize: 5 * 1024 * 1024 // 5MB limit
   },
   fileFilter: function (req, file, cb) {
-    const allowedTypes = /jpeg|jpg|png|pdf|doc|docx/;
+    const allowedTypes = /jpeg|jpg|png|pdf/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
     const mimetype = allowedTypes.test(file.mimetype);
     
     if (mimetype && extname) {
       return cb(null, true);
     } else {
-      cb(new Error('Only image, PDF, and document files are allowed!'));
+      cb(new Error('Only image and PDF files are allowed for transaction receipts!'));
     }
   }
 });
 
 // Submit new application
-router.post('/', upload.fields([
-  { name: 'photo', maxCount: 1 },
-  { name: 'idProof', maxCount: 1 },
-  { name: 'academicRecords', maxCount: 5 },
-  { name: 'otherDocuments', maxCount: 5 }
-]), async (req, res) => {
+router.post('/', upload.single('transactionReceipt'), async (req, res) => {
   try {
     const {
       firstName,
@@ -49,29 +44,29 @@ router.post('/', upload.fields([
       phone,
       dateOfBirth,
       gender,
-      program,
       address,
-      education
+      city,
+      state,
+      zipCode,
+      program,
+      previousSchool,
+      previousGrade,
+      easypaisaNumber,
+      transactionId
     } = req.body;
 
-    // Prepare documents object
-    const documents = {};
-    if (req.files.photo) {
-      documents.photo = req.files.photo[0].path;
-    }
-    if (req.files.idProof) {
-      documents.idProof = req.files.idProof[0].path;
-    }
-    if (req.files.academicRecords) {
-      documents.academicRecords = req.files.academicRecords.map(file => file.path);
-    }
-    if (req.files.otherDocuments) {
-      documents.otherDocuments = req.files.otherDocuments.map(file => file.path);
+    // No payment amount validation needed since it's fixed at Rs. 200
+
+    // Check if transaction receipt is uploaded
+    if (!req.file) {
+      return res.status(400).json({ error: 'Transaction receipt is required' });
     }
 
-    // Parse address and education if they're strings
-    const parsedAddress = typeof address === 'string' ? JSON.parse(address) : address;
-    const parsedEducation = typeof education === 'string' ? JSON.parse(education) : education;
+    // Check for duplicate transaction ID
+    const existingApplication = await Application.findOne({ transactionId });
+    if (existingApplication) {
+      return res.status(400).json({ error: 'This transaction ID has already been used' });
+    }
 
     const application = new Application({
       firstName,
@@ -80,20 +75,50 @@ router.post('/', upload.fields([
       phone,
       dateOfBirth,
       gender,
+      address,
+      city,
+      state,
+      zipCode,
       program,
-      address: parsedAddress,
-      education: parsedEducation,
-      documents
+      previousSchool,
+      previousGrade,
+      paymentAmount: '200', // Fixed amount
+      easypaisaNumber,
+      transactionId,
+      transactionReceipt: req.file.path
     });
 
     await application.save();
 
     res.status(201).json({
       message: 'Application submitted successfully',
-      applicationId: application._id
+      applicationId: application._id,
+      status: 'pending'
     });
   } catch (error) {
     console.error('Application submission error:', error);
+    
+    // Handle validation errors
+    if (error.name === 'ValidationError') {
+      const errors = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({ error: errors.join(', ') });
+    }
+    
+    // Handle duplicate email error
+    if (error.code === 11000) {
+      if (error.keyPattern && error.keyPattern.email) {
+        return res.status(400).json({ 
+          error: 'An application with this email address already exists. Each student can only submit one application. Please use the tracking system to check your application status or contact our support team if you need assistance.' 
+        });
+      }
+      if (error.keyPattern && error.keyPattern.transactionId) {
+        return res.status(400).json({ 
+          error: 'This transaction ID has already been used for another application. Please check your transaction details or contact support.' 
+        });
+      }
+      return res.status(400).json({ error: 'Duplicate application detected. Please check your details or contact support.' });
+    }
+    
     res.status(500).json({ error: 'Failed to submit application' });
   }
 });
@@ -109,7 +134,6 @@ router.get('/', async (req, res) => {
     if (program) filter.program = program;
 
     const applications = await Application.find(filter)
-      .select('firstName lastName email program status createdAt')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
@@ -141,6 +165,7 @@ router.get('/statistics', async (req, res) => {
         rejected: 0,
         byProgram: [],
         byMonth: [],
+        totalPayments: 0,
         message: 'Database temporarily unavailable - showing fallback data'
       });
     }
@@ -149,6 +174,9 @@ router.get('/statistics', async (req, res) => {
     const pendingApplications = await Application.countDocuments({ status: 'pending' });
     const approvedApplications = await Application.countDocuments({ status: 'approved' });
     const rejectedApplications = await Application.countDocuments({ status: 'rejected' });
+
+    // Calculate total payments (assuming all applications paid Rs. 200)
+    const totalPayments = totalApplications * 200;
 
     // Get applications by program
     const programStats = await Application.aggregate([
@@ -181,6 +209,7 @@ router.get('/statistics', async (req, res) => {
       pending: pendingApplications,
       approved: approvedApplications,
       rejected: rejectedApplications,
+      totalPayments,
       byProgram: programStats,
       byMonth: monthlyStats
     });
@@ -195,17 +224,70 @@ router.get('/statistics', async (req, res) => {
         approved: 0,
         rejected: 0,
         byProgram: [],
-        byMonth: []
+        byMonth: [],
+        totalPayments: 0
       }
     });
   }
 });
 
-// Get application status
+// Get application status by email (for tracking)
+router.get('/status/:email', async (req, res) => {
+  try {
+    const email = decodeURIComponent(req.params.email);
+    const application = await Application.findOne({ email: email.toLowerCase() })
+      .select('status firstName lastName program paymentAmount transactionId createdAt notes')
+      .sort({ createdAt: -1 }); // Get the most recent application if multiple exist
+    
+    if (!application) {
+      return res.status(404).json({ error: 'Application not found with this email address' });
+    }
+
+    res.json({
+      id: application._id,
+      firstName: application.firstName,
+      lastName: application.lastName,
+      email: email,
+      program: application.program,
+      status: application.status,
+      applicationDate: application.createdAt,
+      notes: application.notes || ''
+    });
+  } catch (error) {
+    console.error('Error fetching application status by email:', error);
+    res.status(500).json({ error: 'Failed to fetch application status' });
+  }
+});
+
+// Get application status by transaction ID
+router.get('/status/transaction/:transactionId', async (req, res) => {
+  try {
+    const application = await Application.findOne({ transactionId: req.params.transactionId })
+      .select('status firstName lastName fatherName program paymentAmount createdAt');
+    
+    if (!application) {
+      return res.status(404).json({ error: 'Application not found with this transaction ID' });
+    }
+
+    res.json({
+      status: application.status,
+      name: `${application.firstName} ${application.lastName}`,
+      fatherName: application.fatherName,
+      program: application.program,
+      paymentAmount: application.paymentAmount,
+      submittedDate: application.createdAt,
+      transactionId: req.params.transactionId
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch application status' });
+  }
+});
+
+// Get application status by ID
 router.get('/status/:id', async (req, res) => {
   try {
     const application = await Application.findById(req.params.id)
-      .select('status firstName lastName program createdAt');
+      .select('status firstName lastName fatherName program paymentAmount transactionId createdAt');
     
     if (!application) {
       return res.status(404).json({ error: 'Application not found' });
@@ -214,11 +296,54 @@ router.get('/status/:id', async (req, res) => {
     res.json({
       status: application.status,
       name: `${application.firstName} ${application.lastName}`,
+      fatherName: application.fatherName,
       program: application.program,
+      paymentAmount: application.paymentAmount,
+      transactionId: application.transactionId,
       submittedDate: application.createdAt
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch application status' });
+  }
+});
+
+// Update application status (Admin only)
+router.put('/:id', async (req, res) => {
+  try {
+    const { status, notes } = req.body;
+    
+    // Validate status
+    if (!['pending', 'approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+
+    const application = await Application.findById(req.params.id);
+    
+    if (!application) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+
+    // Update the application
+    application.status = status;
+    if (notes) {
+      application.notes = notes;
+    }
+    
+    await application.save();
+
+    res.json({
+      message: 'Application status updated successfully',
+      application: {
+        _id: application._id,
+        firstName: application.firstName,
+        lastName: application.lastName,
+        status: application.status,
+        notes: application.notes
+      }
+    });
+  } catch (error) {
+    console.error('Update application error:', error);
+    res.status(500).json({ error: 'Failed to update application status' });
   }
 });
 

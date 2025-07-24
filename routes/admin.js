@@ -83,30 +83,167 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// Get all applications (protected route)
+// Get admin profile (protected)
+router.get('/profile', auth, async (req, res) => {
+  try {
+    // Handle temporary admin
+    if (req.admin._id === 'temp-admin-id') {
+      return res.json({
+        id: 'temp-admin-id',
+        email: 'hims@gmail.com',
+        name: 'HIMS College Administrator',
+        role: 'super_admin'
+      });
+    }
+
+    // Try database lookup for real admin
+    try {
+      const admin = await Admin.findById(req.admin._id).select('-password');
+      if (!admin) {
+        return res.status(404).json({ error: 'Admin not found' });
+      }
+
+      res.json({
+        id: admin._id,
+        email: admin.email,
+        name: admin.name,
+        role: admin.role
+      });
+    } catch (dbError) {
+      console.log('Database lookup failed in profile route');
+      return res.status(503).json({ error: 'Database temporarily unavailable' });
+    }
+  } catch (error) {
+    console.error('Error fetching profile:', error);
+    res.status(500).json({ error: 'Failed to fetch profile' });
+  }
+});
+
+// Update admin profile (protected)
+router.put('/profile', auth, async (req, res) => {
+  try {
+    const { name, email } = req.body;
+
+    // Validation
+    if (!name || !email) {
+      return res.status(400).json({ error: 'Name and email are required' });
+    }
+
+    // Handle temporary admin
+    if (req.admin._id === 'temp-admin-id') {
+      return res.status(400).json({ 
+        error: 'Cannot update temporary admin profile',
+        message: 'Please set up a proper database connection to update profile'
+      });
+    }
+
+    // Try database update for real admin
+    try {
+      // Check if email is already taken by another admin
+      if (email !== req.admin.email) {
+        const existingAdmin = await Admin.findOne({ email, _id: { $ne: req.admin._id } });
+        if (existingAdmin) {
+          return res.status(400).json({ error: 'Email is already in use' });
+        }
+      }
+
+      const admin = await Admin.findByIdAndUpdate(
+        req.admin._id,
+        { name, email },
+        { new: true, runValidators: true }
+      ).select('-password');
+
+      if (!admin) {
+        return res.status(404).json({ error: 'Admin not found' });
+      }
+
+      res.json({
+        message: 'Profile updated successfully',
+        admin: {
+          id: admin._id,
+          email: admin.email,
+          name: admin.name,
+          role: admin.role
+        }
+      });
+    } catch (dbError) {
+      console.log('Database update failed in profile route');
+      return res.status(503).json({ error: 'Database temporarily unavailable' });
+    }
+  } catch (error) {
+    console.error('Error updating profile:', error);
+    res.status(500).json({ error: 'Failed to update profile' });
+  }
+});
+
+// Change admin password (protected)
+router.put('/change-password', auth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    // Validation
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Current password and new password are required' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters long' });
+    }
+
+    // Handle temporary admin
+    if (req.admin._id === 'temp-admin-id') {
+      return res.status(400).json({ 
+        error: 'Cannot change temporary admin password',
+        message: 'Please set up a proper database connection to change password'
+      });
+    }
+
+    // Try database update for real admin
+    try {
+      const admin = await Admin.findById(req.admin._id);
+      if (!admin) {
+        return res.status(404).json({ error: 'Admin not found' });
+      }
+
+      // Verify current password
+      const isCurrentPasswordValid = await admin.comparePassword(currentPassword);
+      if (!isCurrentPasswordValid) {
+        return res.status(400).json({ error: 'Current password is incorrect' });
+      }
+
+      // Update password (will be hashed by pre-save middleware)
+      admin.password = newPassword;
+      await admin.save();
+
+      res.json({
+        message: 'Password changed successfully'
+      });
+    } catch (dbError) {
+      console.log('Database update failed in change-password route');
+      return res.status(503).json({ error: 'Database temporarily unavailable' });
+    }
+  } catch (error) {
+    console.error('Error changing password:', error);
+    res.status(500).json({ error: 'Failed to change password' });
+  }
+});
+
+// Get all applications (admin only)
 router.get('/applications', auth, async (req, res) => {
   try {
-    const { page = 1, limit = 10, status, program } = req.query;
-    const skip = (page - 1) * limit;
-    
-    let filter = {};
-    if (status) filter.status = status;
-    if (program) filter.program = program;
+    // Check if database is connected
+    if (mongoose.connection.readyState !== 1) {
+      console.log('Database not connected, returning empty array');
+      return res.json([]);
+    }
 
-    const applications = await Application.find(filter)
+    const applications = await Application.find()
       .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
-
-    const total = await Application.countDocuments(filter);
-
-    res.json({
-      applications,
-      total,
-      currentPage: parseInt(page),
-      totalPages: Math.ceil(total / limit)
-    });
+      .maxTimeMS(10000);
+    
+    res.json(applications);
   } catch (error) {
+    console.error('Error fetching applications:', error);
     res.status(500).json({ error: 'Failed to fetch applications' });
   }
 });
