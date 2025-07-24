@@ -73,7 +73,9 @@ const fallbackSlides = [
 
 // Helper function to check if database is ready
 const isDatabaseReady = () => {
-  return mongoose.connection.readyState === 1;
+  // Allow both connected (1) and connecting (2) states
+  // Only block if disconnected (0) or disconnecting (3)
+  return mongoose.connection.readyState === 1 || mongoose.connection.readyState === 2;
 };
 
 // Get all active hero slides (public)
