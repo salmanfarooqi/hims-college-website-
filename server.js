@@ -42,7 +42,7 @@ const corsOptions = {
   origin: process.env.NODE_ENV === 'production' 
     ? [
         'https://hims-college.vercel.app',
-        'https://hims-college-website.vercel.app',
+        'https://hims-college-backend.vercel.app',
         'https://yourdomain.com', 
         'https://www.yourdomain.com'
       ] 
