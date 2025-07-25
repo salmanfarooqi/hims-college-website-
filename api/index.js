@@ -18,19 +18,12 @@ const Student = require('../models/Student');
 
 const app = express();
 
-// CORS configuration
+// CORS configuration - Allow all origins for flexibility
 const corsOptions = {
-  origin: process.env.NODE_ENV === 'production' 
-    ? [
-        'https://hims-college.vercel.app',
-        'https://hims-college-backend.vercel.app',
-        'https://yourdomain.com', 
-        'https://www.yourdomain.com'
-      ] 
-    : ['http://localhost:3000', 'http://localhost:3001'],
-  credentials: true,
+  origin: '*', // Allow all origins
+  credentials: false, // Set to false when using wildcard origin
   optionsSuccessStatus: 200,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'X-Requested-With', 'Accept']
 };
 
