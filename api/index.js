@@ -1,13 +1,14 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const config = require('../config/app-config');
 
-// Load environment variables
-try {
-  require('dotenv').config({ path: './config.env' });
-} catch (error) {
-  console.log('config.env not found, using default environment variables');
-}
+// Debug configuration
+console.log('Configuration check:', {
+  NODE_ENV: config.NODE_ENV,
+  MONGODB_URI_EXISTS: !!config.MONGODB_URI,
+  MONGODB_URI_LENGTH: config.MONGODB_URI ? config.MONGODB_URI.length : 0
+});
 
 const { connectDB, getConnectionStatus } = require('../config/database');
 const Application = require('../models/Application');
@@ -40,7 +41,7 @@ const MAX_CONNECTION_ATTEMPTS = 3;
 const ensureConnection = async (req, res, next) => {
   try {
     // Check if already connected
-    if (getConnectionStatus()) {
+    if (getConnectionStatus && getConnectionStatus()) {
       return next();
     }
     
@@ -82,7 +83,9 @@ app.get("/test", (req, res) => {
   res.json({ 
     message: "API is working!", 
     timestamp: new Date().toISOString(),
-    dbConnected: getConnectionStatus()
+    dbConnected: getConnectionStatus && getConnectionStatus(),
+    environment: config.NODE_ENV,
+    mongoUri: config.MONGODB_URI ? 'Set' : 'Not Set'
   });
 });
 

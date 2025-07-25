@@ -1,15 +1,8 @@
 const mongoose = require('mongoose');
+const config = require('./app-config');
 
-// Connection options for optimal performance (updated for Mongoose 8.x)
-const connectionOptions = {
-  maxPoolSize: 10, // Maintain up to 10 socket connections
-  serverSelectionTimeoutMS: 10000, // Keep trying to send operations for 10 seconds
-  socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
-  connectTimeoutMS: 10000, // Give up initial connection after 10 seconds
-  // Removed deprecated buffer options that are not supported in newer Mongoose versions
-  retryWrites: true,
-  w: 'majority'
-};
+// Connection options from config file
+const connectionOptions = config.DB_OPTIONS;
 
 let isConnected = false;
 
@@ -20,10 +13,10 @@ const connectDB = async (retries = 3) => {
   }
 
   try {
-    const MONGODB_URI = process.env.MONGODB_URI;
+    const MONGODB_URI = config.MONGODB_URI;
     
     if (!MONGODB_URI) {
-      throw new Error('MONGODB_URI environment variable is not defined');
+      throw new Error('MONGODB_URI not defined in config');
     }
 
     console.log('🔄 Attempting to connect to MongoDB...');

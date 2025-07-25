@@ -5,12 +5,12 @@ const helmet = require('helmet');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const morgan = require('morgan');
-require('dotenv').config({ path: './config.env' });
+const config = require('./config/app-config');
 
 const { connectDB, closeConnection } = require('./config/database');
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = config.PORT;
 
 // Security middleware
 app.use(helmet({
@@ -20,8 +20,8 @@ app.use(helmet({
 
 // Rate limiting
 const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // limit each IP to 100 requests per windowMs
+  windowMs: config.RATE_LIMIT_WINDOW_MS,
+  max: config.RATE_LIMIT_MAX_REQUESTS,
   message: {
     error: 'Too many requests from this IP, please try again later.'
   }
@@ -33,7 +33,7 @@ app.use('/api/', limiter);
 app.use(compression());
 
 // Logging middleware
-if (process.env.NODE_ENV !== 'test') {
+if (config.NODE_ENV !== 'test') {
   app.use(morgan('combined'));
 }
 

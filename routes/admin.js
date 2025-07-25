@@ -5,6 +5,7 @@ const Admin = require('../models/Admin');
 const Application = require('../models/Application');
 const auth = require('../middleware/auth');
 const jwt = require('jsonwebtoken');
+const config = require('../config/app-config');
 
 // Admin login
 router.post('/login', async (req, res) => {
@@ -12,14 +13,14 @@ router.post('/login', async (req, res) => {
     const { email, password } = req.body;
     
     // Temporary hardcoded admin for testing when database is unavailable
-    if (email === 'hims@gmail.com' && password === 'hims123') {
+    if (email === config.ADMIN_EMAIL && password === config.ADMIN_PASSWORD) {
       const token = jwt.sign(
         { 
           id: 'temp-admin-id', 
-          email: 'hims@gmail.com', 
+          email: config.ADMIN_EMAIL, 
           role: 'super_admin' 
         },
-        process.env.JWT_SECRET || 'fallback-secret-key',
+        config.JWT_SECRET,
         { expiresIn: '24h' }
       );
 
@@ -27,7 +28,7 @@ router.post('/login', async (req, res) => {
         token,
         admin: {
           id: 'temp-admin-id',
-          email: 'hims@gmail.com',
+          email: config.ADMIN_EMAIL,
           name: 'HIMS College Administrator',
           role: 'super_admin'
         },

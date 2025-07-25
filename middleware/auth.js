@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const Admin = require('../models/Admin');
+const config = require('../config/app-config');
 
 const auth = async (req, res, next) => {
   try {
@@ -9,13 +10,13 @@ const auth = async (req, res, next) => {
       return res.status(401).json({ error: 'Access denied. No token provided.' });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret-key');
+    const decoded = jwt.verify(token, config.JWT_SECRET);
     
     // Handle temporary admin
     if (decoded.id === 'temp-admin-id') {
       req.admin = {
         _id: 'temp-admin-id',
-        email: 'hims@gmail.com',
+        email: config.ADMIN_EMAIL,
         name: 'HIMS College Administrator',
         role: 'super_admin'
       };

@@ -63,9 +63,23 @@ const upload = multer({
   }
 });
 
+// Import connectDB function
+const { connectDB } = require('../config/database');
+
 // Helper function to check if database is ready
 const isDatabaseReady = () => {
   return mongoose.connection.readyState === 1;
+};
+
+// Helper function to ensure database connection
+const ensureDatabaseConnection = async () => {
+  if (!isDatabaseReady()) {
+    console.log('Database not ready, attempting to connect...');
+    await connectDB();
+    // Wait a moment for connection to stabilize
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+  return isDatabaseReady();
 };
 
 // Get all active hero slides (public) - Dynamic only, no hardcoded content
@@ -73,9 +87,10 @@ router.get('/hero-slides', async (req, res) => {
   try {
     console.log('Fetching hero slides from database...');
     
-    // Check if database is ready
-    if (!isDatabaseReady()) {
-      console.log('Database not ready, returning empty array');
+    // Ensure database connection
+    const dbReady = await ensureDatabaseConnection();
+    if (!dbReady) {
+      console.log('Database connection failed, returning empty array');
       return res.json([]);
     }
     
@@ -109,7 +124,8 @@ router.get('/hero-slides', async (req, res) => {
 // Get all hero slides (admin only)
 router.get('/admin/hero-slides', auth, async (req, res) => {
   try {
-    if (!isDatabaseReady()) {
+    const dbReady = await ensureDatabaseConnection();
+    if (!dbReady) {
       return res.status(503).json({ error: 'Database not available' });
     }
     
@@ -126,7 +142,8 @@ router.get('/admin/hero-slides', auth, async (req, res) => {
 // Create new hero slide (admin only)
 router.post('/admin/hero-slides', auth, upload.single('image'), async (req, res) => {
   try {
-    if (!isDatabaseReady()) {
+    const dbReady = await ensureDatabaseConnection();
+    if (!dbReady) {
       return res.status(503).json({ error: 'Database not available' });
     }
     
@@ -237,9 +254,10 @@ router.get('/teachers', async (req, res) => {
   try {
     console.log('Fetching teachers...');
     
-    // Check if database is ready
-    if (!isDatabaseReady()) {
-      console.log('Database not ready, returning empty array');
+    // Ensure database connection
+    const dbReady = await ensureDatabaseConnection();
+    if (!dbReady) {
+      console.log('Database connection failed, returning empty array');
       return res.json([]);
     }
     
@@ -261,9 +279,10 @@ router.get('/students', async (req, res) => {
   try {
     console.log('Fetching students...');
     
-    // Check if database is ready
-    if (!isDatabaseReady()) {
-      console.log('Database not ready, returning empty array');
+    // Ensure database connection
+    const dbReady = await ensureDatabaseConnection();
+    if (!dbReady) {
+      console.log('Database connection failed, returning empty array');
       return res.json([]);
     }
     
