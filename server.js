@@ -40,7 +40,12 @@ if (process.env.NODE_ENV !== 'test') {
 // CORS configuration
 const corsOptions = {
   origin: process.env.NODE_ENV === 'production' 
-    ? ['https://yourdomain.com', 'https://www.yourdomain.com'] 
+    ? [
+        'https://hims-college.vercel.app',
+        'https://hims-college-website.vercel.app',
+        'https://yourdomain.com', 
+        'https://www.yourdomain.com'
+      ] 
     : ['http://localhost:3000', 'http://localhost:3001'],
   credentials: true,
   optionsSuccessStatus: 200,
