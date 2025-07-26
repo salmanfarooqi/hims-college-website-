@@ -8,27 +8,8 @@ const multer = require('multer');
 const path = require('path');
 const mongoose = require('mongoose');
 
-// Configure multer for image uploads
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'uploads/');
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    let prefix = 'image';
-    
-    // Determine file prefix based on the route
-    if (req.route && req.route.path.includes('hero-slides')) {
-      prefix = 'hero-slide';
-    } else if (req.route && req.route.path.includes('teachers')) {
-      prefix = 'teacher';
-    } else if (req.route && req.route.path.includes('students')) {
-      prefix = 'student';
-    }
-    
-    cb(null, prefix + '-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
+// Configure multer for memory storage (Vercel compatible)
+const storage = multer.memoryStorage();
 
 const upload = multer({ 
   storage: storage,
@@ -62,6 +43,29 @@ const upload = multer({
     }
   }
 });
+
+// Helper function to upload to Cloudinary
+const uploadToCloudinary = async (fileBuffer, originalname, folder) => {
+  const cloudinary = require('cloudinary').v2;
+  
+  return new Promise((resolve, reject) => {
+    cloudinary.uploader.upload_stream(
+      {
+        folder: folder,
+        resource_type: 'image',
+        public_id: `${Date.now()}-${Math.round(Math.random() * 1E9)}`,
+        transformation: [
+          { quality: 'auto' },
+          { fetch_format: 'auto' }
+        ]
+      },
+      (error, result) => {
+        if (error) reject(error);
+        else resolve(result.secure_url);
+      }
+    ).end(fileBuffer);
+  });
+};
 
 // Import connectDB function
 const { connectDB } = require('../config/database');
@@ -155,11 +159,22 @@ router.post('/admin/hero-slides', auth, upload.single('image'), async (req, res)
       isActive
     } = req.body;
 
+    // Upload image to Cloudinary if provided
+    let imageUrl = '';
+    if (req.file) {
+      try {
+        imageUrl = await uploadToCloudinary(req.file.buffer, req.file.originalname, 'hims-college/hero-slides');
+      } catch (uploadError) {
+        console.error('Error uploading to Cloudinary:', uploadError);
+        return res.status(500).json({ error: 'Failed to upload image' });
+      }
+    }
+
     const slide = new HeroSlide({
       title,
       subtitle,
       description,
-      imageUrl: req.file ? `/uploads/${req.file.filename}` : '',
+      imageUrl,
       order: order || 0,
       isActive: isActive !== 'false'
     });
@@ -199,7 +214,12 @@ router.put('/admin/hero-slides/:id', auth, upload.single('image'), async (req, r
     slide.isActive = isActive !== undefined ? isActive : slide.isActive;
 
     if (req.file) {
-      slide.imageUrl = `/uploads/${req.file.filename}`;
+      try {
+        slide.imageUrl = await uploadToCloudinary(req.file.buffer, req.file.originalname, 'hims-college/hero-slides');
+      } catch (uploadError) {
+        console.error('Error uploading to Cloudinary:', uploadError);
+        return res.status(500).json({ error: 'Failed to upload image' });
+      }
     }
 
     await slide.save();
@@ -429,6 +449,16 @@ router.post('/admin/teachers', auth, upload.single('image'), async (req, res) =>
       experience: experience ? experience.trim() : ''
     };
 
+    // Upload image to Cloudinary if provided
+    if (req.file) {
+      try {
+        teacherData.imageUrl = await uploadToCloudinary(req.file.buffer, req.file.originalname, 'hims-college/teachers');
+      } catch (uploadError) {
+        console.error('Error uploading to Cloudinary:', uploadError);
+        return res.status(500).json({ error: 'Failed to upload image' });
+      }
+    }
+
     console.log('Creating teacher with data:', teacherData);
 
     const teacher = new Teacher(teacherData);
@@ -497,7 +527,12 @@ router.put('/admin/teachers/:id', auth, upload.single('image'), async (req, res)
 
     // Add image URL if new image was uploaded
     if (req.file) {
-      updateData.imageUrl = `/uploads/${req.file.filename}`;
+      try {
+        updateData.imageUrl = await uploadToCloudinary(req.file.buffer, req.file.originalname, 'hims-college/teachers');
+      } catch (uploadError) {
+        console.error('Error uploading to Cloudinary:', uploadError);
+        return res.status(500).json({ error: 'Failed to upload image' });
+      }
     }
     
     const teacher = await Teacher.findByIdAndUpdate(
@@ -624,6 +659,16 @@ router.post('/admin/students', auth, upload.single('image'), async (req, res) =>
       isShowcaseStudent: isShowcaseStudent
     };
 
+    // Upload image to Cloudinary if provided
+    if (req.file) {
+      try {
+        studentData.imageUrl = await uploadToCloudinary(req.file.buffer, req.file.originalname, 'hims-college/students');
+      } catch (uploadError) {
+        console.error('Error uploading to Cloudinary:', uploadError);
+        return res.status(500).json({ error: 'Failed to upload image' });
+      }
+    }
+
     console.log('Creating student with data:', studentData);
 
     const student = new Student(studentData);
@@ -701,7 +746,12 @@ router.put('/admin/students/:id', auth, upload.single('image'), async (req, res)
 
     // Add image URL if new image was uploaded
     if (req.file) {
-      updateData.imageUrl = `/uploads/${req.file.filename}`;
+      try {
+        updateData.imageUrl = await uploadToCloudinary(req.file.buffer, req.file.originalname, 'hims-college/students');
+      } catch (uploadError) {
+        console.error('Error uploading to Cloudinary:', uploadError);
+        return res.status(500).json({ error: 'Failed to upload image' });
+      }
     }
 
     console.log('Updating student with data:', updateData);

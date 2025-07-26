@@ -1,11 +1,11 @@
 const cloudinary = require('cloudinary').v2;
 require('dotenv').config();
 
-// Configure Cloudinary
+// Configure Cloudinary with actual credentials
 cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET
+  cloud_name: 'dwtru703l',
+  api_key: '964741116272599',
+  api_secret: 'QckGC-axVOaemElOzmt50-rDepA'
 });
 
 // Upload image to Cloudinary

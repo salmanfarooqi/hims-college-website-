@@ -4,17 +4,10 @@ const mongoose = require('mongoose');
 const Application = require('../models/Application');
 const multer = require('multer');
 const path = require('path');
+const { uploadDocument } = require('../utils/cloudinary');
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'uploads/');
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
+// Configure multer for memory storage (for Vercel serverless compatibility)
+const storage = multer.memoryStorage();
 
 const upload = multer({ 
   storage: storage,
@@ -55,8 +48,6 @@ router.post('/', upload.single('transactionReceipt'), async (req, res) => {
       transactionId
     } = req.body;
 
-    // No payment amount validation needed since it's fixed at Rs. 200
-
     // Check if transaction receipt is uploaded
     if (!req.file) {
       return res.status(400).json({ error: 'Transaction receipt is required' });
@@ -66,6 +57,39 @@ router.post('/', upload.single('transactionReceipt'), async (req, res) => {
     const existingApplication = await Application.findOne({ transactionId });
     if (existingApplication) {
       return res.status(400).json({ error: 'This transaction ID has already been used' });
+    }
+
+    // Upload file to Cloudinary
+    let transactionReceiptUrl;
+    try {
+      // Create a temporary file object for Cloudinary
+      const tempFile = {
+        path: req.file.buffer, // Use buffer instead of file path
+        originalname: req.file.originalname
+      };
+      
+      // For memory storage, we need to handle the upload differently
+      const cloudinary = require('cloudinary').v2;
+      
+      // Upload buffer to Cloudinary
+      const uploadResult = await new Promise((resolve, reject) => {
+        cloudinary.uploader.upload_stream(
+          {
+            folder: 'hims-college/transaction-receipts',
+            resource_type: 'auto',
+            public_id: `receipt-${Date.now()}-${Math.round(Math.random() * 1E9)}`
+          },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        ).end(req.file.buffer);
+      });
+      
+      transactionReceiptUrl = uploadResult.secure_url;
+    } catch (uploadError) {
+      console.error('Error uploading to Cloudinary:', uploadError);
+      return res.status(500).json({ error: 'Failed to upload transaction receipt. Please try again.' });
     }
 
     const application = new Application({
@@ -85,7 +109,7 @@ router.post('/', upload.single('transactionReceipt'), async (req, res) => {
       paymentAmount: '200', // Fixed amount
       easypaisaNumber,
       transactionId,
-      transactionReceipt: req.file.path
+      transactionReceipt: transactionReceiptUrl // Store Cloudinary URL instead of local path
     });
 
     await application.save();
@@ -96,29 +120,10 @@ router.post('/', upload.single('transactionReceipt'), async (req, res) => {
       status: 'pending'
     });
   } catch (error) {
-    console.error('Application submission error:', error);
-    
-    // Handle validation errors
+    console.error('Error creating application:', error);
     if (error.name === 'ValidationError') {
-      const errors = Object.values(error.errors).map(err => err.message);
-      return res.status(400).json({ error: errors.join(', ') });
+      return res.status(400).json({ error: error.message });
     }
-    
-    // Handle duplicate email error
-    if (error.code === 11000) {
-      if (error.keyPattern && error.keyPattern.email) {
-        return res.status(400).json({ 
-          error: 'An application with this email address already exists. Each student can only submit one application. Please use the tracking system to check your application status or contact our support team if you need assistance.' 
-        });
-      }
-      if (error.keyPattern && error.keyPattern.transactionId) {
-        return res.status(400).json({ 
-          error: 'This transaction ID has already been used for another application. Please check your transaction details or contact support.' 
-        });
-      }
-      return res.status(400).json({ error: 'Duplicate application detected. Please check your details or contact support.' });
-    }
-    
     res.status(500).json({ error: 'Failed to submit application' });
   }
 });
