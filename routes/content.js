@@ -7,15 +7,13 @@ const auth = require('../middleware/auth');
 const multer = require('multer');
 const path = require('path');
 const mongoose = require('mongoose');
+const sharp = require('sharp');
 
 // Configure multer for memory storage (Vercel compatible)
 const storage = multer.memoryStorage();
 
 const upload = multer({ 
   storage: storage,
-  limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB limit
-  },
   fileFilter: function (req, file, cb) {
     console.log('File upload attempt:', {
       fieldname: file.fieldname,
@@ -44,27 +42,55 @@ const upload = multer({
   }
 });
 
-// Helper function to upload to Cloudinary
+// Helper function to compress and upload to Cloudinary
 const uploadToCloudinary = async (fileBuffer, originalname, folder) => {
   const cloudinary = require('cloudinary').v2;
   
-  return new Promise((resolve, reject) => {
-    cloudinary.uploader.upload_stream(
-      {
-        folder: folder,
-        resource_type: 'image',
-        public_id: `${Date.now()}-${Math.round(Math.random() * 1E9)}`,
-        transformation: [
-          { quality: 'auto' },
-          { fetch_format: 'auto' }
-        ]
-      },
-      (error, result) => {
-        if (error) reject(error);
-        else resolve(result.secure_url);
-      }
-    ).end(fileBuffer);
-  });
+  try {
+    console.log('🖼️ Compressing image before upload...');
+    console.log('📏 Original size:', fileBuffer.length, 'bytes');
+    
+    // Compress image using Sharp
+    const compressedBuffer = await sharp(fileBuffer)
+      .resize(1920, 1080, { // Max dimensions
+        fit: 'inside',
+        withoutEnlargement: true
+      })
+      .jpeg({ 
+        quality: 80, // Good quality, reasonable file size
+        progressive: true 
+      })
+      .toBuffer();
+    
+    console.log('📏 Compressed size:', compressedBuffer.length, 'bytes');
+    console.log('📊 Compression ratio:', Math.round((1 - compressedBuffer.length / fileBuffer.length) * 100) + '%');
+    
+    return new Promise((resolve, reject) => {
+      cloudinary.uploader.upload_stream(
+        {
+          folder: folder,
+          resource_type: 'image',
+          public_id: `${Date.now()}-${Math.round(Math.random() * 1E9)}`,
+          transformation: [
+            { quality: 'auto' },
+            { fetch_format: 'auto' }
+          ]
+        },
+        (error, result) => {
+          if (error) {
+            console.error('❌ Cloudinary upload error:', error);
+            reject(error);
+          } else {
+            console.log('✅ Image uploaded to Cloudinary successfully');
+            resolve(result.secure_url);
+          }
+        }
+      ).end(compressedBuffer);
+    });
+  } catch (error) {
+    console.error('❌ Image compression error:', error);
+    throw new Error(`Failed to process image: ${error.message}`);
+  }
 };
 
 // Import connectDB function
@@ -291,8 +317,124 @@ router.get('/test-hero-slides-url', (req, res) => {
     routes: [
       'POST /api/content/admin/hero-slides-url',
       'PUT /api/content/admin/hero-slides-url/:id'
-    ]
+    ],
+    database: {
+      ready: isDatabaseReady(),
+      state: mongoose.connection.readyState,
+      states: {
+        0: 'disconnected',
+        1: 'connected', 
+        2: 'connecting',
+        3: 'disconnecting'
+      }
+    }
   });
+});
+
+// Direct image upload endpoint - Returns Cloudinary URL
+router.post('/upload-image', auth, upload.single('image'), async (req, res) => {
+  try {
+    console.log('📤 POST /upload-image called');
+    console.log('📎 File:', req.file ? {
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size
+    } : 'No file');
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image file provided' });
+    }
+
+    // Check file size (Cloudinary has 100MB limit, but we'll be more conservative)
+    const maxSize = 50 * 1024 * 1024; // 50MB
+    if (req.file.size > maxSize) {
+      return res.status(413).json({ 
+        error: 'File too large', 
+        details: `File size ${Math.round(req.file.size / 1024 / 1024)}MB exceeds maximum ${Math.round(maxSize / 1024 / 1024)}MB. Image will be compressed automatically.`
+      });
+    }
+
+    // Get folder from request or default to hero-slides
+    const folder = req.body.folder || 'hims-college/hero-slides';
+
+    // Upload to Cloudinary (with compression)
+    try {
+      console.log('☁️ Uploading to Cloudinary...');
+      const imageUrl = await uploadToCloudinary(req.file.buffer, req.file.originalname, folder);
+      console.log('✅ Image uploaded successfully:', imageUrl);
+      
+      res.json({ 
+        success: true,
+        message: 'Image uploaded successfully',
+        imageUrl,
+        file: {
+          originalname: req.file.originalname,
+          mimetype: req.file.mimetype,
+          size: req.file.size
+        }
+      });
+    } catch (uploadError) {
+      console.error('❌ Cloudinary upload failed:', uploadError);
+      
+      // Check if it's a size-related error
+      if (uploadError.message && uploadError.message.includes('413')) {
+        res.status(413).json({ 
+          error: 'Image too large even after compression',
+          details: 'Please try a smaller image or contact support'
+        });
+      } else {
+        res.status(500).json({ 
+          error: 'Failed to upload image to Cloudinary',
+          details: uploadError.message
+        });
+      }
+    }
+  } catch (error) {
+    console.error('❌ Image upload error:', error);
+    res.status(500).json({ error: 'Image upload failed', details: error.message });
+  }
+});
+
+// Test backend upload endpoint (fallback method) - No auth required
+router.post('/test-backend-upload', upload.single('image'), async (req, res) => {
+  try {
+    console.log('🔵 POST /test-backend-upload called');
+    console.log('📝 Request body:', req.body);
+    console.log('📎 File:', req.file ? {
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size
+    } : 'No file');
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file provided' });
+    }
+
+    // Try uploading to Cloudinary
+    try {
+      const imageUrl = await uploadToCloudinary(req.file.buffer, req.file.originalname, 'hims-college/test');
+      console.log('✅ Backend upload to Cloudinary successful:', imageUrl);
+      
+      res.json({ 
+        message: 'Backend upload test successful!',
+        imageUrl,
+        file: {
+          originalname: req.file.originalname,
+          mimetype: req.file.mimetype,
+          size: req.file.size
+        }
+      });
+    } catch (uploadError) {
+      console.error('❌ Backend upload to Cloudinary failed:', uploadError);
+      res.status(500).json({ 
+        error: 'Backend upload failed',
+        details: uploadError.message
+      });
+    }
+  } catch (error) {
+    console.error('❌ Test backend upload error:', error);
+    res.status(500).json({ error: 'Test failed', details: error.message });
+  }
 });
 
 // Update hero slide with Cloudinary URL (admin only) - New method
