@@ -14,6 +14,10 @@ const storage = multer.memoryStorage();
 
 const upload = multer({ 
   storage: storage,
+  limits: {
+    fileSize: 100 * 1024 * 1024, // 100MB limit
+    fieldSize: 100 * 1024 * 1024 // 100MB for other fields
+  },
   fileFilter: function (req, file, cb) {
     console.log('File upload attempt:', {
       fieldname: file.fieldname,
@@ -47,23 +51,43 @@ const uploadToCloudinary = async (fileBuffer, originalname, folder) => {
   const cloudinary = require('cloudinary').v2;
   
   try {
-    console.log('🖼️ Compressing image before upload...');
-    console.log('📏 Original size:', fileBuffer.length, 'bytes');
+    console.log('🖼️ Processing image for upload...');
+    console.log('📏 Original size:', Math.round(fileBuffer.length / 1024 / 1024 * 100) / 100, 'MB');
+    
+    let compressedBuffer = fileBuffer;
+    let quality = 80;
+    let maxWidth = 1920;
+    let maxHeight = 1080;
+    
+    // More aggressive compression for large files
+    if (fileBuffer.length > 20 * 1024 * 1024) { // If file is larger than 20MB
+      console.log('📦 Large file detected, applying aggressive compression...');
+      quality = 60; // Lower quality for large files
+      maxWidth = 1600; // Smaller max dimensions
+      maxHeight = 900;
+    } else if (fileBuffer.length > 10 * 1024 * 1024) { // If file is larger than 10MB
+      console.log('📦 Medium-large file detected, applying moderate compression...');
+      quality = 70;
+      maxWidth = 1800;
+      maxHeight = 1000;
+    }
     
     // Compress image using Sharp
-    const compressedBuffer = await sharp(fileBuffer)
-      .resize(1920, 1080, { // Max dimensions
+    compressedBuffer = await sharp(fileBuffer)
+      .resize(maxWidth, maxHeight, { // Dynamic max dimensions
         fit: 'inside',
         withoutEnlargement: true
       })
       .jpeg({ 
-        quality: 80, // Good quality, reasonable file size
-        progressive: true 
+        quality: quality, // Dynamic quality based on file size
+        progressive: true,
+        mozjpeg: true // Better compression
       })
       .toBuffer();
     
-    console.log('📏 Compressed size:', compressedBuffer.length, 'bytes');
+    console.log('📏 Compressed size:', Math.round(compressedBuffer.length / 1024 / 1024 * 100) / 100, 'MB');
     console.log('📊 Compression ratio:', Math.round((1 - compressedBuffer.length / fileBuffer.length) * 100) + '%');
+    console.log('⚙️ Compression settings:', { quality, maxWidth, maxHeight });
     
     return new Promise((resolve, reject) => {
       cloudinary.uploader.upload_stream(
@@ -338,26 +362,28 @@ router.post('/upload-image', auth, upload.single('image'), async (req, res) => {
     console.log('📎 File:', req.file ? {
       originalname: req.file.originalname,
       mimetype: req.file.mimetype,
-      size: req.file.size
+      size: Math.round(req.file.size / 1024 / 1024 * 100) / 100 + 'MB'
     } : 'No file');
 
     if (!req.file) {
       return res.status(400).json({ error: 'No image file provided' });
     }
 
-    // Check file size (Cloudinary has 100MB limit, but we'll be more conservative)
-    const maxSize = 50 * 1024 * 1024; // 50MB
+    // Check file size (increased limit to 100MB)
+    const maxSize = 100 * 1024 * 1024; // 100MB
     if (req.file.size > maxSize) {
       return res.status(413).json({ 
         error: 'File too large', 
-        details: `File size ${Math.round(req.file.size / 1024 / 1024)}MB exceeds maximum ${Math.round(maxSize / 1024 / 1024)}MB. Image will be compressed automatically.`
+        details: `File size ${Math.round(req.file.size / 1024 / 1024)}MB exceeds maximum ${Math.round(maxSize / 1024 / 1024)}MB. Please try a smaller image.`,
+        maxSize: Math.round(maxSize / 1024 / 1024) + 'MB',
+        actualSize: Math.round(req.file.size / 1024 / 1024) + 'MB'
       });
     }
 
     // Get folder from request or default to hero-slides
     const folder = req.body.folder || 'hims-college/hero-slides';
 
-    // Upload to Cloudinary (with compression)
+    // Upload to Cloudinary (with automatic compression)
     try {
       console.log('☁️ Uploading to Cloudinary...');
       const imageUrl = await uploadToCloudinary(req.file.buffer, req.file.originalname, folder);
@@ -370,7 +396,7 @@ router.post('/upload-image', auth, upload.single('image'), async (req, res) => {
         file: {
           originalname: req.file.originalname,
           mimetype: req.file.mimetype,
-          size: req.file.size
+          originalSize: Math.round(req.file.size / 1024 / 1024 * 100) / 100 + 'MB'
         }
       });
     } catch (uploadError) {
@@ -380,7 +406,8 @@ router.post('/upload-image', auth, upload.single('image'), async (req, res) => {
       if (uploadError.message && uploadError.message.includes('413')) {
         res.status(413).json({ 
           error: 'Image too large even after compression',
-          details: 'Please try a smaller image or contact support'
+          details: 'Please try a smaller image or contact support',
+          suggestion: 'Try images under 50MB for best results'
         });
       } else {
         res.status(500).json({ 

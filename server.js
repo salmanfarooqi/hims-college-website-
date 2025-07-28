@@ -48,8 +48,10 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Increase limits for large file uploads
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
 // Health check endpoint
 app.get('/', (req, res) => {
@@ -108,6 +110,42 @@ app.use('*', (req, res) => {
 // Global error handler
 app.use((err, req, res, next) => {
   console.error('Error:', err);
+  
+  // Handle multer file size errors
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({
+      error: 'File too large',
+      details: 'The uploaded file exceeds the maximum allowed size of 100MB',
+      maxSize: '100MB',
+      suggestion: 'Please try a smaller file or compress your image'
+    });
+  }
+  
+  // Handle multer field size errors
+  if (err.code === 'LIMIT_FIELD_SIZE') {
+    return res.status(413).json({
+      error: 'Field too large',
+      details: 'One of the form fields exceeds the maximum allowed size',
+      maxSize: '100MB'
+    });
+  }
+  
+  // Handle multer file count errors
+  if (err.code === 'LIMIT_FILE_COUNT') {
+    return res.status(413).json({
+      error: 'Too many files',
+      details: 'You can only upload one file at a time'
+    });
+  }
+  
+  // Handle multer file filter errors
+  if (err.message && err.message.includes('Only image files')) {
+    return res.status(400).json({
+      error: 'Invalid file type',
+      details: err.message,
+      allowedTypes: ['JPEG', 'JPG', 'PNG', 'GIF', 'WebP']
+    });
+  }
   
   if (err.name === 'ValidationError') {
     return res.status(400).json({
