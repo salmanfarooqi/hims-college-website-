@@ -61,7 +61,12 @@ const uploadToCloudinary = async (fileBuffer, originalname, folder) => {
     let maxHeight = 1080;
     
     // More aggressive compression for large files
-    if (fileBuffer.length > 20 * 1024 * 1024) { // If file is larger than 20MB
+    if (fileBuffer.length > 50 * 1024 * 1024) { // If file is larger than 50MB
+      console.log('📦 Very large file detected, applying very aggressive compression...');
+      quality = 50; // Very low quality for very large files
+      maxWidth = 1200; // Smaller max dimensions
+      maxHeight = 800;
+    } else if (fileBuffer.length > 20 * 1024 * 1024) { // If file is larger than 20MB
       console.log('📦 Large file detected, applying aggressive compression...');
       quality = 60; // Lower quality for large files
       maxWidth = 1600; // Smaller max dimensions
@@ -141,8 +146,9 @@ const uploadToCloudinary = async (fileBuffer, originalname, folder) => {
       }
     }
     
+    // Upload to Cloudinary with better error handling
     return new Promise((resolve, reject) => {
-      cloudinary.uploader.upload_stream(
+      const uploadStream = cloudinary.uploader.upload_stream(
         {
           folder: folder,
           resource_type: 'image',
@@ -150,7 +156,14 @@ const uploadToCloudinary = async (fileBuffer, originalname, folder) => {
           transformation: [
             { quality: 'auto' },
             { fetch_format: 'auto' }
-          ]
+          ],
+          // Additional options for better handling of large files
+          chunk_size: 6000000, // 6MB chunks for large files
+          eager: [
+            { width: 800, height: 600, crop: 'fill', quality: 'auto' },
+            { width: 400, height: 300, crop: 'fill', quality: 'auto' }
+          ],
+          eager_async: true
         },
         (error, result) => {
           if (error) {
@@ -158,10 +171,26 @@ const uploadToCloudinary = async (fileBuffer, originalname, folder) => {
             reject(error);
           } else {
             console.log('✅ Image uploaded to Cloudinary successfully');
+            console.log('📊 Upload result:', {
+              url: result.secure_url,
+              public_id: result.public_id,
+              bytes: result.bytes,
+              format: result.format,
+              width: result.width,
+              height: result.height
+            });
             resolve(result.secure_url);
           }
         }
-      ).end(compressedBuffer);
+      );
+      
+      // Handle upload stream errors
+      uploadStream.on('error', (error) => {
+        console.error('❌ Upload stream error:', error);
+        reject(error);
+      });
+      
+      uploadStream.end(compressedBuffer);
     });
   } catch (error) {
     console.error('❌ Image processing error:', error);
@@ -509,7 +538,7 @@ router.post('/upload-image-direct', auth, upload.single('image'), async (req, re
       const cloudinary = require('cloudinary').v2;
       
       const result = await new Promise((resolve, reject) => {
-        cloudinary.uploader.upload_stream(
+        const uploadStream = cloudinary.uploader.upload_stream(
           {
             folder: folder,
             resource_type: 'image',
@@ -517,7 +546,14 @@ router.post('/upload-image-direct', auth, upload.single('image'), async (req, re
             transformation: [
               { quality: 'auto' },
               { fetch_format: 'auto' }
-            ]
+            ],
+            // Additional options for better handling of large files
+            chunk_size: 6000000, // 6MB chunks for large files
+            eager: [
+              { width: 800, height: 600, crop: 'fill', quality: 'auto' },
+              { width: 400, height: 300, crop: 'fill', quality: 'auto' }
+            ],
+            eager_async: true
           },
           (error, result) => {
             if (error) {
@@ -525,10 +561,26 @@ router.post('/upload-image-direct', auth, upload.single('image'), async (req, re
               reject(error);
             } else {
               console.log('✅ Image uploaded to Cloudinary successfully');
+              console.log('📊 Direct upload result:', {
+                url: result.secure_url,
+                public_id: result.public_id,
+                bytes: result.bytes,
+                format: result.format,
+                width: result.width,
+                height: result.height
+              });
               resolve(result);
             }
           }
-        ).end(req.file.buffer);
+        );
+        
+        // Handle upload stream errors
+        uploadStream.on('error', (error) => {
+          console.error('❌ Direct upload stream error:', error);
+          reject(error);
+        });
+        
+        uploadStream.end(req.file.buffer);
       });
       
       console.log('✅ Direct upload successful:', result.secure_url);

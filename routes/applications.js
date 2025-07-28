@@ -74,17 +74,43 @@ router.post('/', upload.single('transactionReceipt'), async (req, res) => {
       
       // Upload buffer to Cloudinary
       const uploadResult = await new Promise((resolve, reject) => {
-        cloudinary.uploader.upload_stream(
+        const uploadStream = cloudinary.uploader.upload_stream(
           {
             folder: 'hims-college/transaction-receipts',
             resource_type: 'auto',
-            public_id: `receipt-${Date.now()}-${Math.round(Math.random() * 1E9)}`
+            public_id: `receipt-${Date.now()}-${Math.round(Math.random() * 1E9)}`,
+            // Additional options for better handling of large files
+            chunk_size: 6000000, // 6MB chunks for large files
+            eager: [
+              { width: 800, height: 600, crop: 'fill', quality: 'auto' },
+              { width: 400, height: 300, crop: 'fill', quality: 'auto' }
+            ],
+            eager_async: true
           },
           (error, result) => {
-            if (error) reject(error);
-            else resolve(result);
+            if (error) {
+              console.error('❌ Cloudinary upload error:', error);
+              reject(error);
+            } else {
+              console.log('✅ Transaction receipt uploaded to Cloudinary successfully');
+              console.log('📊 Upload result:', {
+                url: result.secure_url,
+                public_id: result.public_id,
+                bytes: result.bytes,
+                format: result.format
+              });
+              resolve(result);
+            }
           }
-        ).end(req.file.buffer);
+        );
+        
+        // Handle upload stream errors
+        uploadStream.on('error', (error) => {
+          console.error('❌ Upload stream error:', error);
+          reject(error);
+        });
+        
+        uploadStream.end(req.file.buffer);
       });
       
       transactionReceiptUrl = uploadResult.secure_url;
