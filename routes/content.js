@@ -53,6 +53,7 @@ const uploadToCloudinary = async (fileBuffer, originalname, folder) => {
   try {
     console.log('🖼️ Processing image for upload...');
     console.log('📏 Original size:', Math.round(fileBuffer.length / 1024 / 1024 * 100) / 100, 'MB');
+    console.log('📄 File type:', originalname.split('.').pop().toLowerCase());
     
     let compressedBuffer = fileBuffer;
     let quality = 80;
@@ -72,22 +73,73 @@ const uploadToCloudinary = async (fileBuffer, originalname, folder) => {
       maxHeight = 1000;
     }
     
-    // Compress image using Sharp
-    compressedBuffer = await sharp(fileBuffer)
-      .resize(maxWidth, maxHeight, { // Dynamic max dimensions
-        fit: 'inside',
-        withoutEnlargement: true
+    // Try to process the image with Sharp
+    try {
+      console.log('🔧 Attempting image compression with Sharp...');
+      
+      // Get image metadata first
+      const metadata = await sharp(fileBuffer).metadata();
+      console.log('📊 Image metadata:', {
+        format: metadata.format,
+        width: metadata.width,
+        height: metadata.height,
+        channels: metadata.channels
+      });
+      
+      // Compress image using Sharp with better error handling
+      compressedBuffer = await sharp(fileBuffer, {
+        failOnError: false, // Don't fail on corrupt images
+        limitInputPixels: false // Allow large images
       })
-      .jpeg({ 
-        quality: quality, // Dynamic quality based on file size
-        progressive: true,
-        mozjpeg: true // Better compression
-      })
-      .toBuffer();
-    
-    console.log('📏 Compressed size:', Math.round(compressedBuffer.length / 1024 / 1024 * 100) / 100, 'MB');
-    console.log('📊 Compression ratio:', Math.round((1 - compressedBuffer.length / fileBuffer.length) * 100) + '%');
-    console.log('⚙️ Compression settings:', { quality, maxWidth, maxHeight });
+        .resize(maxWidth, maxHeight, { // Dynamic max dimensions
+          fit: 'inside',
+          withoutEnlargement: true
+        })
+        .jpeg({ 
+          quality: quality, // Dynamic quality based on file size
+          progressive: true,
+          mozjpeg: true // Better compression
+        })
+        .toBuffer();
+      
+      console.log('📏 Compressed size:', Math.round(compressedBuffer.length / 1024 / 1024 * 100) / 100, 'MB');
+      console.log('📊 Compression ratio:', Math.round((1 - compressedBuffer.length / fileBuffer.length) * 100) + '%');
+      console.log('⚙️ Compression settings:', { quality, maxWidth, maxHeight });
+      
+    } catch (sharpError) {
+      console.error('❌ Sharp processing failed:', sharpError.message);
+      console.log('🔄 Attempting fallback processing...');
+      
+      // Fallback: Try to process without Sharp, upload original
+      try {
+        // For PNG files that fail Sharp processing, try a different approach
+        if (originalname.toLowerCase().endsWith('.png')) {
+          console.log('🔄 PNG processing failed, trying alternative method...');
+          
+          // Try to convert PNG to JPEG using Sharp with different settings
+          compressedBuffer = await sharp(fileBuffer, {
+            failOnError: false,
+            limitInputPixels: false
+          })
+            .png({ quality: 90 }) // Keep as PNG but with compression
+            .resize(maxWidth, maxHeight, {
+              fit: 'inside',
+              withoutEnlargement: true
+            })
+            .toBuffer();
+            
+          console.log('✅ PNG processed with fallback method');
+        } else {
+          // For other formats, use original buffer
+          console.log('🔄 Using original file buffer as fallback');
+          compressedBuffer = fileBuffer;
+        }
+      } catch (fallbackError) {
+        console.error('❌ Fallback processing also failed:', fallbackError.message);
+        console.log('🔄 Using original file buffer without processing');
+        compressedBuffer = fileBuffer;
+      }
+    }
     
     return new Promise((resolve, reject) => {
       cloudinary.uploader.upload_stream(
@@ -112,7 +164,7 @@ const uploadToCloudinary = async (fileBuffer, originalname, folder) => {
       ).end(compressedBuffer);
     });
   } catch (error) {
-    console.error('❌ Image compression error:', error);
+    console.error('❌ Image processing error:', error);
     throw new Error(`Failed to process image: ${error.message}`);
   }
 };
@@ -418,6 +470,89 @@ router.post('/upload-image', auth, upload.single('image'), async (req, res) => {
     }
   } catch (error) {
     console.error('❌ Image upload error:', error);
+    res.status(500).json({ error: 'Image upload failed', details: error.message });
+  }
+});
+
+// Direct upload without Sharp processing (fallback for problematic images)
+router.post('/upload-image-direct', auth, upload.single('image'), async (req, res) => {
+  try {
+    console.log('📤 POST /upload-image-direct called (no Sharp processing)');
+    console.log('📎 File:', req.file ? {
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: Math.round(req.file.size / 1024 / 1024 * 100) / 100 + 'MB'
+    } : 'No file');
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image file provided' });
+    }
+
+    // Check file size (100MB limit)
+    const maxSize = 100 * 1024 * 1024; // 100MB
+    if (req.file.size > maxSize) {
+      return res.status(413).json({ 
+        error: 'File too large', 
+        details: `File size ${Math.round(req.file.size / 1024 / 1024)}MB exceeds maximum ${Math.round(maxSize / 1024 / 1024)}MB.`,
+        maxSize: Math.round(maxSize / 1024 / 1024) + 'MB',
+        actualSize: Math.round(req.file.size / 1024 / 1024) + 'MB'
+      });
+    }
+
+    // Get folder from request or default to hero-slides
+    const folder = req.body.folder || 'hims-college/hero-slides';
+
+    // Upload directly to Cloudinary without Sharp processing
+    try {
+      console.log('☁️ Uploading directly to Cloudinary (no compression)...');
+      
+      const cloudinary = require('cloudinary').v2;
+      
+      const result = await new Promise((resolve, reject) => {
+        cloudinary.uploader.upload_stream(
+          {
+            folder: folder,
+            resource_type: 'image',
+            public_id: `${Date.now()}-${Math.round(Math.random() * 1E9)}`,
+            transformation: [
+              { quality: 'auto' },
+              { fetch_format: 'auto' }
+            ]
+          },
+          (error, result) => {
+            if (error) {
+              console.error('❌ Cloudinary upload error:', error);
+              reject(error);
+            } else {
+              console.log('✅ Image uploaded to Cloudinary successfully');
+              resolve(result);
+            }
+          }
+        ).end(req.file.buffer);
+      });
+      
+      console.log('✅ Direct upload successful:', result.secure_url);
+      
+      res.json({ 
+        success: true,
+        message: 'Image uploaded successfully (direct upload)',
+        imageUrl: result.secure_url,
+        file: {
+          originalname: req.file.originalname,
+          mimetype: req.file.mimetype,
+          originalSize: Math.round(req.file.size / 1024 / 1024 * 100) / 100 + 'MB',
+          processing: 'none'
+        }
+      });
+    } catch (uploadError) {
+      console.error('❌ Direct upload failed:', uploadError);
+      res.status(500).json({ 
+        error: 'Failed to upload image to Cloudinary',
+        details: uploadError.message
+      });
+    }
+  } catch (error) {
+    console.error('❌ Direct upload error:', error);
     res.status(500).json({ error: 'Image upload failed', details: error.message });
   }
 });
