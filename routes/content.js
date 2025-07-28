@@ -230,6 +230,118 @@ router.put('/admin/hero-slides/:id', auth, upload.single('image'), async (req, r
   }
 });
 
+// Create new hero slide with Cloudinary URL (admin only) - New method
+router.post('/admin/hero-slides-url', auth, async (req, res) => {
+  try {
+    console.log('🟢 POST /admin/hero-slides-url called');
+    console.log('📝 Request body:', req.body);
+    console.log('👤 User from auth:', req.user);
+    
+    const dbReady = await ensureDatabaseConnection();
+    if (!dbReady) {
+      console.log('❌ Database not ready');
+      return res.status(503).json({ error: 'Database not available' });
+    }
+    
+    const {
+      title,
+      subtitle,
+      description,
+      imageUrl,
+      order,
+      isActive
+    } = req.body;
+
+    console.log('📋 Extracted fields:', { title, subtitle, description, imageUrl, order, isActive });
+
+    // Validate required fields
+    if (!title || !subtitle || !description || !imageUrl) {
+      console.log('❌ Validation failed - missing required fields');
+      return res.status(400).json({ error: 'Title, subtitle, description, and imageUrl are required' });
+    }
+
+    const slideData = {
+      title,
+      subtitle,
+      description,
+      imageUrl,
+      order: order || 0,
+      isActive: isActive !== false
+    };
+
+    console.log('💾 Creating slide with data:', slideData);
+
+    const slide = new HeroSlide(slideData);
+    await slide.save();
+    
+    console.log('✅ Hero slide created successfully:', slide._id);
+    res.status(201).json({ message: 'Hero slide created successfully', slide });
+  } catch (error) {
+    console.error('❌ Error creating hero slide:', error);
+    res.status(500).json({ error: 'Failed to create hero slide', details: error.message });
+  }
+});
+
+// Test endpoint for debugging - No auth required
+router.get('/test-hero-slides-url', (req, res) => {
+  console.log('🔵 GET /test-hero-slides-url called');
+  res.json({ 
+    message: 'Hero slides URL endpoint is working!', 
+    timestamp: new Date().toISOString(),
+    routes: [
+      'POST /api/content/admin/hero-slides-url',
+      'PUT /api/content/admin/hero-slides-url/:id'
+    ]
+  });
+});
+
+// Update hero slide with Cloudinary URL (admin only) - New method
+router.put('/admin/hero-slides-url/:id', auth, async (req, res) => {
+  try {
+    console.log(`🟡 PUT /admin/hero-slides-url/${req.params.id} called`);
+    console.log('📝 Request body:', req.body);
+    
+    if (!isDatabaseReady()) {
+      console.log('❌ Database not ready');
+      return res.status(503).json({ error: 'Database not available' });
+    }
+    
+    const {
+      title,
+      subtitle,
+      description,
+      imageUrl,
+      order,
+      isActive
+    } = req.body;
+
+    console.log('📋 Update fields:', { title, subtitle, description, imageUrl, order, isActive });
+
+    const slide = await HeroSlide.findById(req.params.id);
+    if (!slide) {
+      console.log('❌ Hero slide not found:', req.params.id);
+      return res.status(404).json({ error: 'Hero slide not found' });
+    }
+
+    console.log('📄 Found existing slide:', slide.title);
+
+    // Update fields if provided
+    if (title !== undefined) slide.title = title;
+    if (subtitle !== undefined) slide.subtitle = subtitle;
+    if (description !== undefined) slide.description = description;
+    if (imageUrl !== undefined) slide.imageUrl = imageUrl;
+    if (order !== undefined) slide.order = order;
+    if (isActive !== undefined) slide.isActive = isActive;
+
+    await slide.save();
+    console.log('✅ Hero slide updated successfully:', slide._id);
+    res.json({ message: 'Hero slide updated successfully', slide });
+  } catch (error) {
+    console.error('❌ Error updating hero slide:', error);
+    res.status(500).json({ error: 'Failed to update hero slide', details: error.message });
+  }
+});
+
 // Delete hero slide (admin only)
 router.delete('/admin/hero-slides/:id', auth, async (req, res) => {
   try {
