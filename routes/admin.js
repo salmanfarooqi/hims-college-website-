@@ -20,8 +20,8 @@ router.post('/login', async (req, res) => {
           email: config.ADMIN_EMAIL, 
           role: 'super_admin' 
         },
-        config.JWT_SECRET,
-        { expiresIn: '24h' }
+        config.JWT_SECRET
+        // No expiration - token will never expire
       );
 
       return res.json({
@@ -50,8 +50,8 @@ router.post('/login', async (req, res) => {
 
       const token = jwt.sign(
         { id: admin._id, email: admin.email, role: admin.role },
-        process.env.JWT_SECRET,
-        { expiresIn: '24h' }
+        process.env.JWT_SECRET
+        // No expiration - token will never expire
       );
 
       res.json({

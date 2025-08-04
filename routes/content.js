@@ -774,16 +774,49 @@ router.get('/students', async (req, res) => {
       return res.json([]);
     }
     
-    const students = await Student.find({ status: 'active' })
+    // Get year filter from query parameters
+    const { year } = req.query;
+    
+    // Build query
+    const query = { status: 'active' };
+    if (year && year !== 'all') {
+      query.year = year;
+    }
+    
+    const students = await Student.find(query)
       .select('-__v')
       .sort({ lastName: 1, firstName: 1 });
     
-    console.log(`Returning ${students.length} active students`);
+    console.log(`Returning ${students.length} active students${year ? ` for year ${year}` : ''}`);
     res.json(students);
     
   } catch (error) {
     console.error('Error fetching students:', error);
     res.status(500).json({ error: 'Failed to fetch students' });
+  }
+});
+
+// Get available years for filtering (public)
+router.get('/students/years', async (req, res) => {
+  try {
+    console.log('Fetching available years...');
+    
+    // Ensure database connection
+    const dbReady = await ensureDatabaseConnection();
+    if (!dbReady) {
+      console.log('Database connection failed, returning empty array');
+      return res.json([]);
+    }
+    
+    const years = await Student.distinct('year', { status: 'active' });
+    const sortedYears = years.sort((a, b) => b - a); // Sort descending (newest first)
+    
+    console.log(`Returning ${sortedYears.length} available years`);
+    res.json(sortedYears);
+    
+  } catch (error) {
+    console.error('Error fetching years:', error);
+    res.status(500).json({ error: 'Failed to fetch years' });
   }
 });
 
@@ -963,7 +996,8 @@ router.put('/admin/teachers/:id', auth, upload.single('image'), async (req, res)
       phone,
       department,
       qualifications,
-      experience
+      experience,
+      imageUrl
     } = req.body;
 
     // Build update object with proper field handling
@@ -993,14 +1027,18 @@ router.put('/admin/teachers/:id', auth, upload.single('image'), async (req, res)
     if (qualifications !== undefined) updateData.qualifications = qualifications ? qualifications.trim() : '';
     if (experience !== undefined) updateData.experience = experience ? experience.trim() : '';
 
-    // Add image URL if new image was uploaded
+    // Handle image URL - either from file upload or direct URL
     if (req.file) {
+      // File upload - upload to Cloudinary
       try {
         updateData.imageUrl = await uploadToCloudinary(req.file.buffer, req.file.originalname, 'hims-college/teachers');
       } catch (uploadError) {
         console.error('Error uploading to Cloudinary:', uploadError);
         return res.status(500).json({ error: 'Failed to upload image' });
       }
+    } else if (imageUrl !== undefined) {
+      // Direct URL provided (e.g., from Cloudinary upload in frontend)
+      updateData.imageUrl = imageUrl;
     }
     
     const teacher = await Teacher.findByIdAndUpdate(
@@ -1063,10 +1101,9 @@ router.post('/admin/students', auth, upload.single('image'), async (req, res) =>
       gender,
       program,
       status,
-      gpa,
-      achievement,
-      quote,
-      awards
+      year,
+      profession,
+      institute
     } = req.body;
 
     // Handle name field that might come as a single field or separate firstName/lastName
@@ -1095,15 +1132,16 @@ router.post('/admin/students', auth, upload.single('image'), async (req, res) =>
     }
 
     // Validate required fields - now with better validation
-    if (!finalFirstName || !program) {
-      console.log('Validation failed:', { finalFirstName, program });
+    if (!finalFirstName || !profession || !institute) {
+      console.log('Validation failed:', { finalFirstName, profession, institute });
       return res.status(400).json({ 
         error: 'Missing required fields',
-        details: 'name (or firstName) and program are required for students',
+        details: 'name (or firstName), profession, and institute are required for shining stars',
         received: {
           name: name || 'not provided',
           firstName: firstName || 'not provided', 
-          program: program || 'not provided'
+          profession: profession || 'not provided',
+          institute: institute || 'not provided'
         }
       });
     }
@@ -1116,14 +1154,13 @@ router.post('/admin/students', auth, upload.single('image'), async (req, res) =>
       phone: phone ? phone.trim() : '',
       dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : new Date('2000-01-01'),
       gender: gender || 'other',
-      program: program.trim(),
+      program: 'Shining Star', // Default program for showcase students
       status: status || 'active',
       imageUrl: req.file ? `/uploads/${req.file.filename}` : '',
-      // Additional fields for student showcase
-      gpa: gpa || '',
-      achievement: achievement || '',
-      quote: quote || '',
-      awards: awards ? (typeof awards === 'string' ? JSON.parse(awards) : awards) : [],
+      // Simplified fields for shining stars
+      year: Array.isArray(year) ? year[0] : (year || new Date().getFullYear().toString()),
+      profession: profession || '',
+      institute: institute || '',
       isShowcaseStudent: isShowcaseStudent
     };
 
@@ -1175,10 +1212,9 @@ router.put('/admin/students/:id', auth, upload.single('image'), async (req, res)
       gender,
       program,
       status,
-      gpa,
-      achievement,
-      quote,
-      awards
+      year,
+      profession,
+      institute
     } = req.body;
 
     // Handle name field that might come as a single field or separate firstName/lastName
@@ -1203,14 +1239,12 @@ router.put('/admin/students/:id', auth, upload.single('image'), async (req, res)
     if (phone !== undefined) updateData.phone = phone ? phone.trim() : '';
     if (dateOfBirth) updateData.dateOfBirth = new Date(dateOfBirth);
     if (gender) updateData.gender = gender;
-    if (program) updateData.program = program.trim();
+
     if (status) updateData.status = status;
-    if (gpa !== undefined) updateData.gpa = gpa;
-    if (achievement !== undefined) updateData.achievement = achievement;
-    if (quote !== undefined) updateData.quote = quote;
-    if (awards !== undefined) {
-      updateData.awards = awards ? (typeof awards === 'string' ? JSON.parse(awards) : awards) : [];
-    }
+
+    if (year !== undefined) updateData.year = Array.isArray(year) ? year[0] : year;
+    if (profession !== undefined) updateData.profession = profession;
+    if (institute !== undefined) updateData.institute = institute;
 
     // Add image URL if new image was uploaded
     if (req.file) {
@@ -1347,4 +1381,4 @@ router.get('/admin/students/stats', auth, async (req, res) => {
   }
 });
 
-module.exports = router; 
+module.exports = router;

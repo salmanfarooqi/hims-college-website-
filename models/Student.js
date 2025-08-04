@@ -36,6 +36,7 @@ const studentSchema = new mongoose.Schema({
   program: {
     type: String,
     required: true,
+    enum: ['FSC Pre-Medical', 'FSC Pre-Engineering', 'ICS Computer Science', 'Shining Star'],
     trim: true
   },
   enrollmentDate: {
@@ -51,25 +52,21 @@ const studentSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
-  // Additional fields for student showcase
-  gpa: {
+  // Simplified fields for shining stars
+  year: {
+    type: String,
+    trim: true,
+    default: new Date().getFullYear().toString()
+  },
+  profession: {
     type: String,
     trim: true,
     default: ''
   },
-  achievement: {
+  institute: {
     type: String,
     trim: true,
     default: ''
-  },
-  quote: {
-    type: String,
-    trim: true,
-    default: ''
-  },
-  awards: {
-    type: [String],
-    default: []
   },
   // Flag to identify showcase students vs regular applicants
   isShowcaseStudent: {
@@ -96,5 +93,6 @@ const studentSchema = new mongoose.Schema({
 // Create indexes for efficient queries (email index is automatically created by unique: true)
 studentSchema.index({ program: 1 });
 studentSchema.index({ status: 1 });
+studentSchema.index({ year: 1 });
 
 module.exports = mongoose.model('Student', studentSchema); 
