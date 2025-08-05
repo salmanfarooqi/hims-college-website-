@@ -1003,14 +1003,14 @@ router.put('/admin/teachers/:id', auth, upload.single('image'), async (req, res)
     // Build update object with proper field handling
     const updateData = {};
     
-    // Required fields - only update if provided
-    if (name && name.trim()) updateData.name = name.trim();
-    if (position && position.trim()) updateData.position = position.trim();
-    if (expertise && expertise.trim()) updateData.expertise = expertise.trim();
+    // Required fields - update if provided (even if empty)
+    if (name !== undefined) updateData.name = name ? name.trim() : '';
+    if (position !== undefined) updateData.position = position ? position.trim() : '';
+    if (expertise !== undefined) updateData.expertise = expertise ? expertise.trim() : '';
     
-    // Optional fields
+    // Optional fields - update if provided
     if (description !== undefined) {
-      updateData.description = description.trim() || `Experienced ${position || 'educator'} specializing in ${expertise || 'their field'}`;
+      updateData.description = description ? description.trim() : `Experienced ${position || 'educator'} specializing in ${expertise || 'their field'}`;
     }
     if (rating !== undefined) updateData.rating = rating ? parseFloat(rating) : 5;
     if (order !== undefined) updateData.order = order ? parseInt(order) : 0;
@@ -1021,7 +1021,7 @@ router.put('/admin/teachers/:id', auth, upload.single('image'), async (req, res)
       updateData.email = email && email.trim() !== '' ? email.trim() : null;
     }
     
-    // Other optional fields
+    // Other optional fields - update if provided
     if (phone !== undefined) updateData.phone = phone ? phone.trim() : '';
     if (department !== undefined) updateData.department = department ? department.trim() : '';
     if (qualifications !== undefined) updateData.qualifications = qualifications ? qualifications.trim() : '';
@@ -1122,6 +1122,7 @@ router.put('/admin/teachers-url/:id', auth, async (req, res) => {
     }
     
     console.log('Final update data:', updateData);
+    console.log('Updating teacher with ID:', req.params.id);
     
     const teacher = await Teacher.findByIdAndUpdate(
       req.params.id,
@@ -1133,8 +1134,17 @@ router.put('/admin/teachers-url/:id', auth, async (req, res) => {
       return res.status(404).json({ error: 'Teacher not found' });
     }
     
+    // Ensure the changes are saved to database
+    await teacher.save();
+    
+    // Fetch fresh data from database to ensure we have the latest
+    const freshTeacher = await Teacher.findById(req.params.id);
+    
     console.log('Teacher updated successfully:', teacher);
-    res.json({ message: 'Teacher updated successfully', teacher });
+    console.log('Teacher saved to database with imageUrl:', teacher.imageUrl);
+    console.log('Fresh teacher data from database:', freshTeacher);
+    
+    res.json({ message: 'Teacher updated successfully', teacher: freshTeacher });
   } catch (error) {
     console.error('Error updating teacher:', error);
     res.status(500).json({ 
