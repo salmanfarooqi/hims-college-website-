@@ -1,72 +1,51 @@
-const http = require('http');
+const mongoose = require('mongoose');
+const Teacher = require('./models/Teacher');
+const config = require('./config/app-config');
 
-const testTeacherCreation = () => {
-  return new Promise((resolve, reject) => {
-    const postData = JSON.stringify({
-      firstName: 'John',
-      lastName: 'Doe',
-      email: 'john.doe@example.com',
-      phone: '1234567890',
-      department: 'Computer Science',
-      status: 'active'
-    });
-
-    const options = {
-      hostname: 'localhost',
-      port: 5000,
-      path: '/api/teachers/admin',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(postData),
-        'Authorization': 'Bearer test-token' // This will fail auth, but we can see the error
-      }
-    };
-
-    const req = http.request(options, (res) => {
-      let data = '';
-      res.on('data', (chunk) => {
-        data += chunk;
-      });
-      res.on('end', () => {
-        try {
-          const jsonData = JSON.parse(data);
-          resolve({ status: res.statusCode, data: jsonData });
-        } catch (e) {
-          resolve({ status: res.statusCode, data: data });
-        }
-      });
-    });
-
-    req.on('error', (err) => {
-      reject(err);
-    });
-
-    req.write(postData);
-    req.end();
-  });
-};
-
-const runTest = async () => {
-  console.log('Testing teacher creation endpoint...\n');
-
+async function testTeacherCreation() {
   try {
-    const result = await testTeacherCreation();
-    console.log('Teacher Creation Test Result:');
-    console.log('Status:', result.status);
-    console.log('Response:', JSON.stringify(result.data, null, 2));
+    console.log('🔄 Connecting to database...');
+    await mongoose.connect(config.MONGODB_URI);
+    console.log('✅ Connected to database');
     
-    if (result.status === 401) {
-      console.log('\n✅ Expected: Authentication required');
-    } else if (result.status === 503) {
-      console.log('\n✅ Expected: Database not available with proper error message');
-    } else {
-      console.log('\n❌ Unexpected status code');
-    }
+    // Check existing teachers
+    const existingTeachers = await Teacher.find({});
+    console.log(`📊 Found ${existingTeachers.length} existing teachers`);
+    
+    // Create a test teacher
+    const testTeacher = new Teacher({
+      name: 'Test Teacher',
+      position: 'Test Position',
+      expertise: 'Test Expertise',
+      description: 'Test Description',
+      rating: 5,
+      order: 0,
+      isActive: true,
+      imageUrl: '' // Empty image URL
+    });
+    
+    await testTeacher.save();
+    console.log('✅ Test teacher created successfully');
+    console.log('📝 Teacher data:', {
+      id: testTeacher._id,
+      name: testTeacher.name,
+      imageUrl: testTeacher.imageUrl || 'NO IMAGE'
+    });
+    
+    // Check all teachers again
+    const allTeachers = await Teacher.find({});
+    console.log(`📊 Total teachers now: ${allTeachers.length}`);
+    
+    allTeachers.forEach((teacher, index) => {
+      console.log(`${index + 1}. ${teacher.name} - Image: ${teacher.imageUrl || 'NO IMAGE'}`);
+    });
     
   } catch (error) {
-    console.error('Test failed:', error.message);
+    console.error('❌ Error:', error.message);
+  } finally {
+    await mongoose.disconnect();
+    console.log('🔌 Disconnected from database');
   }
-};
+}
 
-runTest(); 
+testTeacherCreation(); 
