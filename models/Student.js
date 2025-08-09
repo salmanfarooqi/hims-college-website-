@@ -68,6 +68,11 @@ const studentSchema = new mongoose.Schema({
     trim: true,
     default: ''
   },
+  // Order field for sorting in shining stars section
+  order: {
+    type: Number,
+    default: 999
+  },
   // Flag to identify showcase students vs regular applicants
   isShowcaseStudent: {
     type: Boolean,
@@ -94,5 +99,6 @@ const studentSchema = new mongoose.Schema({
 studentSchema.index({ program: 1 });
 studentSchema.index({ status: 1 });
 studentSchema.index({ year: 1 });
+studentSchema.index({ order: 1 });
 
 module.exports = mongoose.model('Student', studentSchema); 

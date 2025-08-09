@@ -783,10 +783,26 @@ router.get('/students', async (req, res) => {
       query.year = year;
     }
     
-    const students = await Student.find(query)
-      .select('-__v')
-      .sort({ lastName: 1, firstName: 1 });
-    
+    const students = await Student.aggregate([
+      { $match: query },
+      { $addFields: {
+          effectiveOrder: {
+            $cond: [
+              { $or: [
+                { $eq: ['$order', null] },
+                { $eq: ['$order', 0] },
+                { $lt: ['$order', 0] }
+              ] },
+              999999,
+              '$order'
+            ]
+          }
+        }
+      },
+      { $sort: { effectiveOrder: 1, lastName: 1, firstName: 1 } },
+      { $project: { __v: 0 } }
+    ]);
+
     console.log(`Returning ${students.length} active students${year ? ` for year ${year}` : ''}`);
     res.json(students);
     
@@ -885,7 +901,7 @@ router.get('/admin/students', auth, async (req, res) => {
     
     const students = await Student.find()
       .select('-__v')
-      .sort({ lastName: 1, firstName: 1 });
+      .sort({ order: 1, lastName: 1, firstName: 1 });
     
     res.json(students);
   } catch (error) {
@@ -912,8 +928,7 @@ router.post('/admin/teachers', auth, upload.single('image'), async (req, res) =>
       phone,
       department,
       qualifications,
-      experience,
-      imageUrl
+      experience
     } = req.body;
 
     console.log('Teacher creation request:', {
@@ -922,9 +937,7 @@ router.post('/admin/teachers', auth, upload.single('image'), async (req, res) =>
       expertise,
       email,
       phone,
-      order,
-      hasImage: !!req.file,
-      imageUrl: imageUrl ? 'provided' : 'not provided'
+      hasImage: !!req.file
     });
 
     // Validate required fields for teachers
@@ -935,15 +948,6 @@ router.post('/admin/teachers', auth, upload.single('image'), async (req, res) =>
       });
     }
 
-    // Auto-assign order if not provided
-    let teacherOrder = order ? parseInt(order) : 0;
-    if (!order || teacherOrder === 0) {
-      // Get the highest order number and add 1
-      const lastTeacher = await Teacher.findOne().sort({ order: -1 });
-      teacherOrder = lastTeacher ? (lastTeacher.order || 0) + 1 : 1;
-      console.log(`🔢 Auto-assigned order: ${teacherOrder}`);
-    }
-
     // Create teacher object with proper field mapping
     const teacherData = {
       name: name.trim(),
@@ -951,8 +955,8 @@ router.post('/admin/teachers', auth, upload.single('image'), async (req, res) =>
       expertise: expertise.trim(),
       description: description ? description.trim() : `Experienced ${position} specializing in ${expertise}`,
       rating: rating ? parseFloat(rating) : 5.0,
-      order: teacherOrder, // Use the calculated order
-      imageUrl: req.file ? `/uploads/${req.file.filename}` : (imageUrl || ''),
+      order: order ? parseInt(order) : 0,
+      imageUrl: req.file ? `/uploads/${req.file.filename}` : '',
       isActive: true,
       // Optional fields - only include if provided and not empty
       email: email && email.trim() !== '' ? email.trim() : null,
@@ -962,20 +966,14 @@ router.post('/admin/teachers', auth, upload.single('image'), async (req, res) =>
       experience: experience ? experience.trim() : ''
     };
 
-    // Handle image - either from file upload or direct URL
+    // Upload image to Cloudinary if provided
     if (req.file) {
-      // File upload - upload to Cloudinary
       try {
         teacherData.imageUrl = await uploadToCloudinary(req.file.buffer, req.file.originalname, 'hims-college/teachers');
-        console.log('✅ Teacher image uploaded to Cloudinary:', teacherData.imageUrl);
       } catch (uploadError) {
         console.error('Error uploading to Cloudinary:', uploadError);
         return res.status(500).json({ error: 'Failed to upload image' });
       }
-    } else if (imageUrl) {
-      // Direct URL provided (e.g., from Cloudinary upload in frontend)
-      teacherData.imageUrl = imageUrl;
-      console.log('✅ Teacher image URL provided from frontend:', imageUrl);
     }
 
     console.log('Creating teacher with data:', teacherData);
@@ -983,92 +981,7 @@ router.post('/admin/teachers', auth, upload.single('image'), async (req, res) =>
     const teacher = new Teacher(teacherData);
     await teacher.save();
     
-    console.log(`✅ Teacher created successfully with order ${teacherOrder}:`, teacher._id);
-    
-    res.status(201).json({ message: 'Teacher created successfully', teacher });
-  } catch (error) {
-    console.error('Error creating teacher:', error);
-    res.status(500).json({ 
-      error: 'Failed to create teacher',
-      details: error.message 
-    });
-  }
-});
-
-// Create new teacher with JSON data (admin only) - for frontend JSON updates
-router.post('/admin/teachers-json', auth, async (req, res) => {
-  try {
-    if (!isDatabaseReady()) {
-      return res.status(503).json({ error: 'Database not available' });
-    }
-    
-    const {
-      name,
-      position,
-      expertise,
-      description,
-      rating,
-      order,
-      email,
-      phone,
-      department,
-      qualifications,
-      experience,
-      imageUrl
-    } = req.body;
-
-    console.log('Teacher creation request (JSON):', {
-      name,
-      position, 
-      expertise,
-      email,
-      phone,
-      order,
-      imageUrl: imageUrl ? 'provided' : 'not provided'
-    });
-
-    // Validate required fields for teachers
-    if (!name || !position || !expertise) {
-      return res.status(400).json({ 
-        error: 'Missing required fields',
-        details: 'name, position, and expertise are required for teachers'
-      });
-    }
-
-    // Auto-assign order if not provided
-    let teacherOrder = order ? parseInt(order) : 0;
-    if (!order || teacherOrder === 0) {
-      // Get the highest order number and add 1
-      const lastTeacher = await Teacher.findOne().sort({ order: -1 });
-      teacherOrder = lastTeacher ? (lastTeacher.order || 0) + 1 : 1;
-      console.log(`🔢 Auto-assigned order: ${teacherOrder}`);
-    }
-
-    // Create teacher object with proper field mapping
-    const teacherData = {
-      name: name.trim(),
-      position: position.trim(),
-      expertise: expertise.trim(),
-      description: description ? description.trim() : `Experienced ${position} specializing in ${expertise}`,
-      rating: rating ? parseFloat(rating) : 5.0,
-      order: teacherOrder,
-      imageUrl: imageUrl || '', // Use provided imageUrl or empty string
-      isActive: true,
-      // Optional fields - only include if provided and not empty
-      email: email && email.trim() !== '' ? email.trim() : null,
-      phone: phone ? phone.trim() : '',
-      department: department ? department.trim() : (expertise ? expertise.trim() : ''),
-      qualifications: qualifications ? qualifications.trim() : '',
-      experience: experience ? experience.trim() : ''
-    };
-
-    console.log('Creating teacher with data:', teacherData);
-
-    const teacher = new Teacher(teacherData);
-    await teacher.save();
-    
-    console.log(`✅ Teacher created successfully with order ${teacherOrder}:`, teacher._id);
-    console.log('✅ Teacher imageUrl saved as:', teacher.imageUrl);
+    console.log('Teacher created successfully:', teacher._id);
     
     res.status(201).json({ message: 'Teacher created successfully', teacher });
   } catch (error) {
@@ -1106,94 +1019,6 @@ router.put('/admin/teachers/:id', auth, upload.single('image'), async (req, res)
     // Build update object with proper field handling
     const updateData = {};
     
-    // Required fields - update if provided (even if empty)
-    if (name !== undefined) updateData.name = name ? name.trim() : '';
-    if (position !== undefined) updateData.position = position ? position.trim() : '';
-    if (expertise !== undefined) updateData.expertise = expertise ? expertise.trim() : '';
-    
-    // Optional fields - update if provided
-    if (description !== undefined) {
-      updateData.description = description ? description.trim() : `Experienced ${position || 'educator'} specializing in ${expertise || 'their field'}`;
-    }
-    if (rating !== undefined) updateData.rating = rating ? parseFloat(rating) : 5;
-    if (order !== undefined) updateData.order = order ? parseInt(order) : 0;
-    if (isActive !== undefined) updateData.isActive = isActive !== false;
-    
-    // Handle email properly to avoid duplicate key errors
-    if (email !== undefined) {
-      updateData.email = email && email.trim() !== '' ? email.trim() : null;
-    }
-    
-    // Other optional fields - update if provided
-    if (phone !== undefined) updateData.phone = phone ? phone.trim() : '';
-    if (department !== undefined) updateData.department = department ? department.trim() : '';
-    if (qualifications !== undefined) updateData.qualifications = qualifications ? qualifications.trim() : '';
-    if (experience !== undefined) updateData.experience = experience ? experience.trim() : '';
-
-    // Handle image URL - either from file upload or direct URL
-    if (req.file) {
-      // File upload - upload to Cloudinary
-      try {
-        updateData.imageUrl = await uploadToCloudinary(req.file.buffer, req.file.originalname, 'hims-college/teachers');
-        console.log('✅ Teacher image uploaded to Cloudinary:', updateData.imageUrl);
-      } catch (uploadError) {
-        console.error('Error uploading to Cloudinary:', uploadError);
-        return res.status(500).json({ error: 'Failed to upload image' });
-      }
-    } else if (imageUrl !== undefined) {
-      // Direct URL provided (e.g., from Cloudinary upload in frontend)
-      updateData.imageUrl = imageUrl;
-      console.log('✅ Teacher image URL updated from frontend:', imageUrl);
-    }
-    
-    const teacher = await Teacher.findByIdAndUpdate(
-      req.params.id,
-      updateData,
-      { new: true, runValidators: true }
-    );
-    
-    if (!teacher) {
-      return res.status(404).json({ error: 'Teacher not found' });
-    }
-    
-    res.json({ message: 'Teacher updated successfully', teacher });
-  } catch (error) {
-    console.error('Error updating teacher:', error);
-    res.status(500).json({ 
-      error: 'Failed to update teacher',
-      details: error.message 
-    });
-  }
-});
-
-// Update teacher with image URL (admin only) - for frontend JSON updates
-router.put('/admin/teachers-url/:id', auth, async (req, res) => {
-  try {
-    if (!isDatabaseReady()) {
-      return res.status(503).json({ error: 'Database not available' });
-    }
-    
-    const {
-      name,
-      position,
-      expertise,
-      description,
-      rating,
-      order,
-      isActive,
-      email,
-      phone,
-      department,
-      qualifications,
-      experience,
-      imageUrl
-    } = req.body;
-
-    console.log('Updating teacher with data:', req.body);
-
-    // Build update object with proper field handling
-    const updateData = {};
-    
     // Required fields - only update if provided
     if (name && name.trim()) updateData.name = name.trim();
     if (position && position.trim()) updateData.position = position.trim();
@@ -1218,14 +1043,19 @@ router.put('/admin/teachers-url/:id', auth, async (req, res) => {
     if (qualifications !== undefined) updateData.qualifications = qualifications ? qualifications.trim() : '';
     if (experience !== undefined) updateData.experience = experience ? experience.trim() : '';
 
-    // Handle image URL - this is the key fix for image updates
-    if (imageUrl !== undefined) {
+    // Handle image URL - either from file upload or direct URL
+    if (req.file) {
+      // File upload - upload to Cloudinary
+      try {
+        updateData.imageUrl = await uploadToCloudinary(req.file.buffer, req.file.originalname, 'hims-college/teachers');
+      } catch (uploadError) {
+        console.error('Error uploading to Cloudinary:', uploadError);
+        return res.status(500).json({ error: 'Failed to upload image' });
+      }
+    } else if (imageUrl !== undefined) {
+      // Direct URL provided (e.g., from Cloudinary upload in frontend)
       updateData.imageUrl = imageUrl;
-      console.log('Updating teacher image URL to:', imageUrl);
     }
-    
-    console.log('Final update data:', updateData);
-    console.log('Updating teacher with ID:', req.params.id);
     
     const teacher = await Teacher.findByIdAndUpdate(
       req.params.id,
@@ -1237,17 +1067,7 @@ router.put('/admin/teachers-url/:id', auth, async (req, res) => {
       return res.status(404).json({ error: 'Teacher not found' });
     }
     
-    // Ensure the changes are saved to database
-    await teacher.save();
-    
-    // Fetch fresh data from database to ensure we have the latest
-    const freshTeacher = await Teacher.findById(req.params.id);
-    
-    console.log('Teacher updated successfully:', teacher);
-    console.log('Teacher saved to database with imageUrl:', teacher.imageUrl);
-    console.log('Fresh teacher data from database:', freshTeacher);
-    
-    res.json({ message: 'Teacher updated successfully', teacher: freshTeacher });
+    res.json({ message: 'Teacher updated successfully', teacher });
   } catch (error) {
     console.error('Error updating teacher:', error);
     res.status(500).json({ 
@@ -1299,7 +1119,8 @@ router.post('/admin/students', auth, upload.single('image'), async (req, res) =>
       status,
       year,
       profession,
-      institute
+      institute,
+      order
     } = req.body;
 
     // Handle name field that might come as a single field or separate firstName/lastName
@@ -1357,7 +1178,8 @@ router.post('/admin/students', auth, upload.single('image'), async (req, res) =>
       year: Array.isArray(year) ? year[0] : (year || new Date().getFullYear().toString()),
       profession: profession || '',
       institute: institute || '',
-      isShowcaseStudent: isShowcaseStudent
+      isShowcaseStudent: isShowcaseStudent,
+      order: order ? parseInt(order) : 0
     };
 
     // Upload image to Cloudinary if provided
@@ -1376,106 +1198,6 @@ router.post('/admin/students', auth, upload.single('image'), async (req, res) =>
     await student.save();
     
     console.log('Student created successfully:', student._id);
-    
-    res.status(201).json({ message: 'Student created successfully', student });
-  } catch (error) {
-    console.error('Error creating student:', error);
-    res.status(500).json({ 
-      error: 'Failed to create student',
-      details: error.message 
-    });
-  }
-});
-
-// Create new student with JSON data (admin only) - for frontend JSON updates
-router.post('/admin/students-json', auth, async (req, res) => {
-  try {
-    if (!isDatabaseReady()) {
-      return res.status(503).json({ error: 'Database not available' });
-    }
-    
-    const {
-      name,
-      firstName,
-      lastName,
-      email,
-      phone,
-      dateOfBirth,
-      gender,
-      program,
-      status,
-      year,
-      profession,
-      institute,
-      imageUrl
-    } = req.body;
-
-    console.log('Student creation request (JSON):', {
-      name,
-      firstName,
-      lastName,
-      profession,
-      institute,
-      imageUrl: imageUrl ? 'provided' : 'not provided'
-    });
-
-    // Handle name field that might come as a single field or separate firstName/lastName
-    let finalFirstName = firstName;
-    let finalLastName = lastName;
-    
-    if (name && name.trim()) {
-      const nameParts = name.trim().split(' ');
-      finalFirstName = nameParts[0] || 'Student';
-      finalLastName = nameParts.slice(1).join(' ') || 'Student';
-    } else if (firstName && firstName.trim()) {
-      finalFirstName = firstName.trim();
-      finalLastName = lastName ? lastName.trim() : 'Student';
-    }
-
-    // Generate email for showcase students if not provided
-    let finalEmail = email;
-    let isShowcaseStudent = false;
-    if (!email || email.trim() === '') {
-      // For showcase students, generate a unique dummy email
-      const timestamp = Date.now();
-      const nameSlug = (name || finalFirstName || 'student').toLowerCase().replace(/\s+/g, '');
-      finalEmail = `showcase.${nameSlug}.${timestamp}@hims.showcase`;
-      isShowcaseStudent = true;
-      console.log('Generated showcase email:', finalEmail);
-    }
-
-    // Validate required fields
-    if (!finalFirstName || !profession || !institute) {
-      return res.status(400).json({ 
-        error: 'Missing required fields',
-        details: 'name (or firstName), profession, and institute are required for shining stars'
-      });
-    }
-
-    // Create student object with proper field mapping
-    const studentData = {
-      firstName: finalFirstName,
-      lastName: finalLastName || 'Student',
-      email: finalEmail.trim(),
-      phone: phone ? phone.trim() : '',
-      dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : new Date('2000-01-01'),
-      gender: gender || 'other',
-      program: 'Shining Star',
-      status: status || 'active',
-      imageUrl: imageUrl || '',
-      year: Array.isArray(year) ? year[0] : (year || new Date().getFullYear().toString()),
-      profession: profession || '',
-      institute: institute || '',
-      isShowcaseStudent: isShowcaseStudent
-    };
-
-    console.log('Creating student with data:', studentData);
-
-    const student = new Student(studentData);
-    await student.save();
-    
-    console.log('✅ Student created successfully:', student._id);
-    console.log('✅ Student imageUrl saved as:', student.imageUrl);
     
     res.status(201).json({ message: 'Student created successfully', student });
   } catch (error) {
@@ -1510,7 +1232,8 @@ router.put('/admin/students/:id', auth, upload.single('image'), async (req, res)
       status,
       year,
       profession,
-      institute
+      institute,
+      order
     } = req.body;
 
     // Handle name field that might come as a single field or separate firstName/lastName
@@ -1541,6 +1264,7 @@ router.put('/admin/students/:id', auth, upload.single('image'), async (req, res)
     if (year !== undefined) updateData.year = Array.isArray(year) ? year[0] : year;
     if (profession !== undefined) updateData.profession = profession;
     if (institute !== undefined) updateData.institute = institute;
+    if (order !== undefined) updateData.order = order ? parseInt(order) : 0;
 
     // Add image URL if new image was uploaded
     if (req.file) {
@@ -1576,98 +1300,6 @@ router.put('/admin/students/:id', auth, upload.single('image'), async (req, res)
   }
 });
 
-// Update student with image URL (admin only) - for frontend JSON updates
-router.put('/admin/students-url/:id', auth, async (req, res) => {
-  try {
-    if (!isDatabaseReady()) {
-      return res.status(503).json({ error: 'Database not available' });
-    }
-    
-    const {
-      name,
-      firstName,
-      lastName,
-      email,
-      phone,
-      dateOfBirth,
-      gender,
-      program,
-      status,
-      year,
-      profession,
-      institute,
-      imageUrl
-    } = req.body;
-
-    console.log('Updating student with data:', req.body);
-
-    // Handle name field that might come as a single field or separate firstName/lastName
-    let finalFirstName = firstName;
-    let finalLastName = lastName;
-    
-    if (name && name.trim()) {
-      const nameParts = name.trim().split(' ');
-      finalFirstName = nameParts[0] || 'Student';
-      finalLastName = nameParts.slice(1).join(' ') || 'Student';
-    } else if (firstName && firstName.trim()) {
-      finalFirstName = firstName.trim();
-      finalLastName = lastName ? lastName.trim() : 'Student';
-    }
-
-    // Build update object
-    const updateData = {};
-    
-    if (finalFirstName) updateData.firstName = finalFirstName;
-    if (finalLastName) updateData.lastName = finalLastName;
-    if (email !== undefined) updateData.email = email ? email.trim() : '';
-    if (phone !== undefined) updateData.phone = phone ? phone.trim() : '';
-    if (dateOfBirth) updateData.dateOfBirth = new Date(dateOfBirth);
-    if (gender) updateData.gender = gender;
-    if (program) updateData.program = program;
-    if (status) updateData.status = status;
-    if (year !== undefined) updateData.year = Array.isArray(year) ? year[0] : year;
-    if (profession !== undefined) updateData.profession = profession;
-    if (institute !== undefined) updateData.institute = institute;
-
-    // Handle image URL
-    if (imageUrl !== undefined) {
-      updateData.imageUrl = imageUrl;
-      console.log('Updating student image URL to:', imageUrl);
-    }
-    
-    console.log('Final update data:', updateData);
-    console.log('Updating student with ID:', req.params.id);
-    
-    const student = await Student.findByIdAndUpdate(
-      req.params.id,
-      updateData,
-      { new: true, runValidators: true }
-    );
-    
-    if (!student) {
-      return res.status(404).json({ error: 'Student not found' });
-    }
-    
-    // Ensure the changes are saved to database
-    await student.save();
-    
-    // Fetch fresh data from database to ensure we have the latest
-    const freshStudent = await Student.findById(req.params.id);
-    
-    console.log('Student updated successfully:', student);
-    console.log('Student saved to database with imageUrl:', student.imageUrl);
-    console.log('Fresh student data from database:', freshStudent);
-    
-    res.json({ message: 'Student updated successfully', student: freshStudent });
-  } catch (error) {
-    console.error('Error updating student:', error);
-    res.status(500).json({ 
-      error: 'Failed to update student',
-      details: error.message 
-    });
-  }
-});
-
 // Delete student (admin only)
 router.delete('/admin/students/:id', auth, async (req, res) => {
   try {
@@ -1684,6 +1316,49 @@ router.delete('/admin/students/:id', auth, async (req, res) => {
   } catch (error) {
     console.error('Error deleting student:', error);
     res.status(500).json({ error: 'Failed to delete student' });
+  }
+});
+
+// Reorder students (admin only)
+router.patch('/admin/students/reorder', auth, async (req, res) => {
+  try {
+    if (!isDatabaseReady()) {
+      return res.status(503).json({ error: 'Database not available' });
+    }
+
+    const { students } = req.body; // Array of { id, order }
+    if (!Array.isArray(students)) {
+      return res.status(400).json({ error: 'Invalid payload: students array is required' });
+    }
+
+    for (const item of students) {
+      if (!item || !item.id || typeof item.order !== 'number') continue;
+      await Student.findByIdAndUpdate(item.id, { order: item.order });
+    }
+
+    res.json({ message: 'Students reordered successfully' });
+  } catch (error) {
+    console.error('Error reordering students:', error);
+    res.status(500).json({ error: 'Failed to reorder students' });
+  }
+});
+
+// Normalize student order values (admin only)
+router.patch('/admin/students/normalize-order', auth, async (req, res) => {
+  try {
+    if (!isDatabaseReady()) {
+      return res.status(503).json({ error: 'Database not available' });
+    }
+
+    const result = await Student.updateMany(
+      { $or: [ { order: { $exists: false } }, { order: null }, { order: 0 } ] },
+      { $set: { order: 999 } }
+    );
+
+    res.json({ message: 'Student order normalized to 999 for zero/undefined', result });
+  } catch (error) {
+    console.error('Error normalizing student order:', error);
+    res.status(500).json({ error: 'Failed to normalize student order' });
   }
 });
 
@@ -1766,45 +1441,6 @@ router.get('/admin/students/stats', auth, async (req, res) => {
   } catch (error) {
     console.error('Error fetching student statistics:', error);
     res.status(500).json({ error: 'Failed to fetch student statistics' });
-  }
-});
-
-// Reorder all teachers (admin only) - ensures sequential order 1,2,3,4,5...
-router.put('/admin/teachers/reorder', auth, async (req, res) => {
-  try {
-    if (!isDatabaseReady()) {
-      return res.status(503).json({ error: 'Database not available' });
-    }
-    
-    console.log('🔄 Starting teacher reorder process...');
-    
-    // Get all teachers sorted by current order, then by name
-    const teachers = await Teacher.find().sort({ order: 1, name: 1 });
-    
-    console.log(`📊 Found ${teachers.length} teachers to reorder`);
-    
-    // Update each teacher with sequential order
-    const updatePromises = teachers.map((teacher, index) => {
-      const newOrder = index + 1; // Start from 1
-      return Teacher.findByIdAndUpdate(teacher._id, { order: newOrder }, { new: true });
-    });
-    
-    const updatedTeachers = await Promise.all(updatePromises);
-    
-    console.log('✅ All teachers reordered successfully!');
-    
-    res.json({ 
-      message: 'Teachers reordered successfully',
-      teachers: updatedTeachers,
-      totalReordered: updatedTeachers.length
-    });
-    
-  } catch (error) {
-    console.error('Error reordering teachers:', error);
-    res.status(500).json({ 
-      error: 'Failed to reorder teachers',
-      details: error.message 
-    });
   }
 });
 
