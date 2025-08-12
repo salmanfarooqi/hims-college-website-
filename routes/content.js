@@ -9,14 +9,17 @@ const path = require('path');
 const mongoose = require('mongoose');
 const sharp = require('sharp');
 
+// IMPORTANT: File size limits are set to 4MB to be compatible with Vercel's serverless functions
+// Vercel has a hard limit of 4.5MB for request bodies, so we use 4MB to be safe
+
 // Configure multer for memory storage (Vercel compatible)
 const storage = multer.memoryStorage();
 
 const upload = multer({ 
   storage: storage,
   limits: {
-    fileSize: 100 * 1024 * 1024, // 100MB limit
-    fieldSize: 100 * 1024 * 1024 // 100MB for other fields
+    fileSize: 4 * 1024 * 1024, // 4MB limit (Vercel compatible)
+    fieldSize: 4 * 1024 * 1024 // 4MB for other fields
   },
   fileFilter: function (req, file, cb) {
     console.log('File upload attempt:', {
@@ -450,8 +453,8 @@ router.post('/upload-image', auth, upload.single('image'), async (req, res) => {
       return res.status(400).json({ error: 'No image file provided' });
     }
 
-    // Check file size (increased limit to 100MB)
-    const maxSize = 100 * 1024 * 1024; // 100MB
+    // Check file size (4MB limit for Vercel compatibility)
+    const maxSize = 4 * 1024 * 1024; // 4MB
     if (req.file.size > maxSize) {
       return res.status(413).json({ 
         error: 'File too large', 
@@ -517,13 +520,13 @@ router.post('/upload-image-direct', auth, upload.single('image'), async (req, re
       return res.status(400).json({ error: 'No image file provided' });
     }
 
-    // Check file size (100MB limit)
-    const maxSize = 100 * 1024 * 1024; // 100MB
-    if (req.file.size > maxSize) {
+    // Check file size (4MB limit for Vercel compatibility)
+    const maxSize = 4 * 1024 * 1024; // 4MB
+    if (req.file.size / 1024 / 1024 > 4) {
       return res.status(413).json({ 
         error: 'File too large', 
-        details: `File size ${Math.round(req.file.size / 1024 / 1024)}MB exceeds maximum ${Math.round(maxSize / 1024 / 1024)}MB.`,
-        maxSize: Math.round(maxSize / 1024 / 1024) + 'MB',
+        details: `File size ${Math.round(req.file.size / 1024 / 1024)}MB exceeds maximum 4MB.`,
+        maxSize: '4MB',
         actualSize: Math.round(req.file.size / 1024 / 1024) + 'MB'
       });
     }

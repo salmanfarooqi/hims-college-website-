@@ -49,9 +49,10 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-// Increase limits for large file uploads
-app.use(express.json({ limit: '100mb' }));
-app.use(express.urlencoded({ extended: true, limit: '100mb' }));
+// Set limits compatible with Vercel (4MB)
+// Note: Vercel serverless functions have a hard limit of 4.5MB for request bodies
+app.use(express.json({ limit: '4mb' }));
+app.use(express.urlencoded({ extended: true, limit: '4mb' }));
 
 // Health check endpoint
 app.get('/', (req, res) => {
