@@ -23,35 +23,48 @@ const upload = multer({
     if (mimetype && extname) {
       return cb(null, true);
     } else {
-      cb(new Error('Only image and PDF files are allowed for transaction receipts!'));
+      cb(new Error('Only image and PDF files are allowed for documents!'));
     }
   }
 });
 
-// Submit new application
-router.post('/', upload.single('transactionReceipt'), async (req, res) => {
+// Submit new application with multiple document uploads
+router.post('/', upload.fields([
+  { name: 'dmcMetric', maxCount: 1 },
+  { name: 'passportPhoto', maxCount: 1 },
+  { name: 'fatherCNIC', maxCount: 1 },
+  { name: 'migrationCertificate', maxCount: 1 },
+  { name: 'transactionReceipt', maxCount: 1 }
+]), async (req, res) => {
   try {
     const {
       firstName,
       lastName,
+      fatherName,
       email,
       phone,
+      guardianPhone,
       dateOfBirth,
       gender,
+      class: studentClass,
+      group,
       address,
       city,
       state,
       zipCode,
-      program,
-      previousSchool,
-      previousGrade,
+      'education[metric][year]': metricYear,
+      'education[metric][rollNumber]': metricRollNumber,
+      'education[metric][marks]': metricMarks,
+      'education[metric][school]': metricSchool,
       easypaisaNumber,
       transactionId
     } = req.body;
 
-    // Check if transaction receipt is uploaded
-    if (!req.file) {
-      return res.status(400).json({ error: 'Transaction receipt is required' });
+    // Check if required documents are uploaded
+    if (!req.files.dmcMetric || !req.files.passportPhoto || !req.files.fatherCNIC || !req.files.transactionReceipt) {
+      return res.status(400).json({ 
+        error: 'Required documents missing. Please upload: DMC of Metric, Passport Photo, Father CNIC, and Transaction Receipt' 
+      });
     }
 
     // Check for duplicate transaction ID
@@ -60,27 +73,20 @@ router.post('/', upload.single('transactionReceipt'), async (req, res) => {
       return res.status(400).json({ error: 'This transaction ID has already been used' });
     }
 
-    // Upload file to Cloudinary
-    let transactionReceiptUrl;
+    // Upload all documents to Cloudinary
+    let dmcMetricUrl, passportPhotoUrl, fatherCNICUrl, migrationCertificateUrl, transactionReceiptUrl;
+    
     try {
-      // Create a temporary file object for Cloudinary
-      const tempFile = {
-        path: req.file.buffer, // Use buffer instead of file path
-        originalname: req.file.originalname
-      };
-      
-      // For memory storage, we need to handle the upload differently
       const cloudinary = require('cloudinary').v2;
       
-      // Upload buffer to Cloudinary
-      const uploadResult = await new Promise((resolve, reject) => {
+      // Upload DMC of Metric
+      const dmcResult = await new Promise((resolve, reject) => {
         const uploadStream = cloudinary.uploader.upload_stream(
           {
-            folder: 'hims-college/transaction-receipts',
+            folder: 'hims-college/dmc-metric',
             resource_type: 'auto',
-            public_id: `receipt-${Date.now()}-${Math.round(Math.random() * 1E9)}`,
-            // Additional options for better handling of large files
-            chunk_size: 6000000, // 6MB chunks for large files
+            public_id: `dmc-${Date.now()}-${Math.round(Math.random() * 1E9)}`,
+            chunk_size: 6000000,
             eager: [
               { width: 800, height: 600, crop: 'fill', quality: 'auto' },
               { width: 400, height: 300, crop: 'fill', quality: 'auto' }
@@ -88,55 +94,146 @@ router.post('/', upload.single('transactionReceipt'), async (req, res) => {
             eager_async: true
           },
           (error, result) => {
-            if (error) {
-              console.error('❌ Cloudinary upload error:', error);
-              reject(error);
-            } else {
-              console.log('✅ Transaction receipt uploaded to Cloudinary successfully');
-              console.log('📊 Upload result:', {
-                url: result.secure_url,
-                public_id: result.public_id,
-                bytes: result.bytes,
-                format: result.format
-              });
-              resolve(result);
-            }
+            if (error) reject(error);
+            else resolve(result);
           }
         );
-        
-        // Handle upload stream errors
-        uploadStream.on('error', (error) => {
-          console.error('❌ Upload stream error:', error);
-          reject(error);
-        });
-        
-        uploadStream.end(req.file.buffer);
+        uploadStream.end(req.files.dmcMetric[0].buffer);
       });
-      
-      transactionReceiptUrl = uploadResult.secure_url;
+      dmcMetricUrl = dmcResult.secure_url;
+
+      // Upload Passport Photo
+      const photoResult = await new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+          {
+            folder: 'hims-college/passport-photos',
+            resource_type: 'auto',
+            public_id: `photo-${Date.now()}-${Math.round(Math.random() * 1E9)}`,
+            chunk_size: 6000000,
+            eager: [
+              { width: 400, height: 400, crop: 'fill', quality: 'auto' },
+              { width: 200, height: 200, crop: 'fill', quality: 'auto' }
+            ],
+            eager_async: true
+          },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        );
+        uploadStream.end(req.files.passportPhoto[0].buffer);
+      });
+      passportPhotoUrl = photoResult.secure_url;
+
+      // Upload Father CNIC
+      const cnicResult = await new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+          {
+            folder: 'hims-college/father-cnic',
+            resource_type: 'auto',
+            public_id: `cnic-${Date.now()}-${Math.round(Math.random() * 1E9)}`,
+            chunk_size: 6000000,
+            eager: [
+              { width: 800, height: 600, crop: 'fill', quality: 'auto' },
+              { width: 400, height: 300, crop: 'fill', quality: 'auto' }
+            ],
+            eager_async: true
+          },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        );
+        uploadStream.end(req.files.fatherCNIC[0].buffer);
+      });
+      fatherCNICUrl = cnicResult.secure_url;
+
+      // Upload Migration Certificate (optional)
+      if (req.files.migrationCertificate) {
+        const migrationResult = await new Promise((resolve, reject) => {
+          const uploadStream = cloudinary.uploader.upload_stream(
+            {
+              folder: 'hims-college/migration-certificates',
+              resource_type: 'auto',
+              public_id: `migration-${Date.now()}-${Math.round(Math.random() * 1E9)}`,
+              chunk_size: 6000000,
+              eager: [
+                { width: 800, height: 600, crop: 'fill', quality: 'auto' },
+                { width: 400, height: 300, crop: 'fill', quality: 'auto' }
+              ],
+              eager_async: true
+            },
+            (error, result) => {
+              if (error) reject(error);
+              else resolve(result);
+            }
+          );
+          uploadStream.end(req.files.migrationCertificate[0].buffer);
+        });
+        migrationCertificateUrl = migrationResult.secure_url;
+      }
+
+      // Upload Transaction Receipt
+      const receiptResult = await new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+          {
+            folder: 'hims-college/transaction-receipts',
+            resource_type: 'auto',
+            public_id: `receipt-${Date.now()}-${Math.round(Math.random() * 1E9)}`,
+            chunk_size: 6000000,
+            eager: [
+              { width: 800, height: 600, crop: 'fill', quality: 'auto' },
+              { width: 400, height: 300, crop: 'fill', quality: 'auto' }
+            ],
+            eager_async: true
+          },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        );
+        uploadStream.end(req.files.transactionReceipt[0].buffer);
+      });
+      transactionReceiptUrl = receiptResult.secure_url;
+
     } catch (uploadError) {
       console.error('Error uploading to Cloudinary:', uploadError);
-      return res.status(500).json({ error: 'Failed to upload transaction receipt. Please try again.' });
+      return res.status(500).json({ error: 'Failed to upload documents. Please try again.' });
     }
 
     const application = new Application({
       firstName,
       lastName,
+      fatherName,
       email,
       phone,
+      guardianPhone,
       dateOfBirth,
       gender,
+      class: studentClass,
+      group,
       address,
       city,
       state,
       zipCode,
-      program,
-      previousSchool,
-      previousGrade,
-      paymentAmount: '200', // Fixed amount
+      education: {
+        metric: {
+          year: metricYear,
+          rollNumber: metricRollNumber,
+          marks: metricMarks,
+          school: metricSchool
+        }
+      },
+      documents: {
+        dmcMetric: dmcMetricUrl,
+        passportPhoto: passportPhotoUrl,
+        fatherCNIC: fatherCNICUrl,
+        migrationCertificate: migrationCertificateUrl
+      },
+      paymentAmount: '500',
       easypaisaNumber,
       transactionId,
-      transactionReceipt: transactionReceiptUrl // Store Cloudinary URL instead of local path
+      transactionReceipt: transactionReceiptUrl
     });
 
     await application.save();
@@ -158,12 +255,12 @@ router.post('/', upload.single('transactionReceipt'), async (req, res) => {
 // Get all applications (public endpoint for checking applications)
 router.get('/', async (req, res) => {
   try {
-    const { page = 1, limit = 10, status, program } = req.query;
+    const { page = 1, limit = 10, status, group } = req.query;
     const skip = (page - 1) * limit;
     
     let filter = {};
     if (status) filter.status = status;
-    if (program) filter.program = program;
+    if (group) filter.group = group;
 
     const applications = await Application.find(filter)
       .sort({ createdAt: -1 })
@@ -195,7 +292,8 @@ router.get('/statistics', async (req, res) => {
         pending: 0,
         approved: 0,
         rejected: 0,
-        byProgram: [],
+        byGroup: [],
+        byClass: [],
         byMonth: [],
         totalPayments: 0,
         message: 'Database temporarily unavailable - showing fallback data'
@@ -207,14 +305,25 @@ router.get('/statistics', async (req, res) => {
     const approvedApplications = await Application.countDocuments({ status: 'approved' });
     const rejectedApplications = await Application.countDocuments({ status: 'rejected' });
 
-    // Calculate total payments (assuming all applications paid Rs. 200)
+    // Calculate total payments (assuming all applications paid Rs. 500)
     const totalPayments = totalApplications * 200;
 
-    // Get applications by program
-    const programStats = await Application.aggregate([
+    // Get applications by group
+    const groupStats = await Application.aggregate([
       {
         $group: {
-          _id: '$program',
+          _id: '$group',
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { count: -1 } }
+    ]);
+
+    // Get applications by class
+    const classStats = await Application.aggregate([
+      {
+        $group: {
+          _id: '$class',
           count: { $sum: 1 }
         }
       },
@@ -242,7 +351,8 @@ router.get('/statistics', async (req, res) => {
       approved: approvedApplications,
       rejected: rejectedApplications,
       totalPayments,
-      byProgram: programStats,
+      byGroup: groupStats,
+      byClass: classStats,
       byMonth: monthlyStats
     });
   } catch (error) {
@@ -255,7 +365,8 @@ router.get('/statistics', async (req, res) => {
         pending: 0,
         approved: 0,
         rejected: 0,
-        byProgram: [],
+        byGroup: [],
+        byClass: [],
         byMonth: [],
         totalPayments: 0
       }
@@ -268,7 +379,7 @@ router.get('/status/:email', async (req, res) => {
   try {
     const email = decodeURIComponent(req.params.email);
     const application = await Application.findOne({ email: email.toLowerCase() })
-      .select('status firstName lastName program paymentAmount transactionId createdAt notes')
+      .select('status firstName lastName group paymentAmount transactionId createdAt notes')
       .sort({ createdAt: -1 }); // Get the most recent application if multiple exist
     
     if (!application) {
@@ -280,7 +391,7 @@ router.get('/status/:email', async (req, res) => {
       firstName: application.firstName,
       lastName: application.lastName,
       email: email,
-      program: application.program,
+      group: application.group,
       status: application.status,
       applicationDate: application.createdAt,
       notes: application.notes || ''
@@ -291,11 +402,61 @@ router.get('/status/:email', async (req, res) => {
   }
 });
 
+// Get application status by phone number (new tracking method)
+router.get('/status/phone/:phone', async (req, res) => {
+  try {
+    const rawPhone = decodeURIComponent(req.params.phone).trim();
+    // Normalize common PK formats to compare consistently (store as provided otherwise)
+    // Accept both 03xxxxxxxxx and +923xxxxxxxxx
+    const normalized = rawPhone.startsWith('+92')
+      ? '0' + rawPhone.slice(3)
+      : rawPhone;
+
+    const application = await Application.findOne({ phone: normalized })
+      .select('status firstName lastName fatherName group paymentAmount transactionId createdAt')
+      .sort({ createdAt: -1 });
+
+    if (!application) {
+      // Try raw phone if normalization didn't match
+      const fallback = await Application.findOne({ phone: rawPhone })
+        .select('status firstName lastName fatherName group paymentAmount transactionId createdAt')
+        .sort({ createdAt: -1 });
+      if (!fallback) {
+        return res.status(404).json({ error: 'Application not found with this phone number' });
+      }
+      return res.json({
+        status: fallback.status,
+        name: `${fallback.firstName} ${fallback.lastName}`.trim(),
+        fatherName: fallback.fatherName,
+        group: fallback.group,
+        paymentAmount: fallback.paymentAmount,
+        transactionId: fallback.transactionId,
+        submittedDate: fallback.createdAt,
+        phone: rawPhone
+      });
+    }
+
+    res.json({
+      status: application.status,
+      name: `${application.firstName} ${application.lastName}`.trim(),
+      fatherName: application.fatherName,
+      group: application.group,
+      paymentAmount: application.paymentAmount,
+      transactionId: application.transactionId,
+      submittedDate: application.createdAt,
+      phone: normalized
+    });
+  } catch (error) {
+    console.error('Error fetching application status by phone:', error);
+    res.status(500).json({ error: 'Failed to fetch application status' });
+  }
+});
+
 // Get application status by transaction ID
 router.get('/status/transaction/:transactionId', async (req, res) => {
   try {
     const application = await Application.findOne({ transactionId: req.params.transactionId })
-      .select('status firstName lastName fatherName program paymentAmount createdAt');
+      .select('status firstName lastName fatherName group paymentAmount createdAt');
     
     if (!application) {
       return res.status(404).json({ error: 'Application not found with this transaction ID' });
@@ -305,7 +466,7 @@ router.get('/status/transaction/:transactionId', async (req, res) => {
       status: application.status,
       name: `${application.firstName} ${application.lastName}`,
       fatherName: application.fatherName,
-      program: application.program,
+      group: application.group,
       paymentAmount: application.paymentAmount,
       submittedDate: application.createdAt,
       transactionId: req.params.transactionId
@@ -319,7 +480,7 @@ router.get('/status/transaction/:transactionId', async (req, res) => {
 router.get('/status/:id', async (req, res) => {
   try {
     const application = await Application.findById(req.params.id)
-      .select('status firstName lastName fatherName program paymentAmount transactionId createdAt');
+      .select('status firstName lastName fatherName group paymentAmount transactionId createdAt');
     
     if (!application) {
       return res.status(404).json({ error: 'Application not found' });
@@ -329,7 +490,7 @@ router.get('/status/:id', async (req, res) => {
       status: application.status,
       name: `${application.firstName} ${application.lastName}`,
       fatherName: application.fatherName,
-      program: application.program,
+      group: application.group,
       paymentAmount: application.paymentAmount,
       transactionId: application.transactionId,
       submittedDate: application.createdAt
