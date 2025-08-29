@@ -37,6 +37,60 @@ router.post('/', upload.fields([
   { name: 'transactionReceipt', maxCount: 1 }
 ]), async (req, res) => {
   try {
+    // Debug: Log received form data
+    console.log('📥 Received form data:', req.body);
+    console.log('📥 Education fields:', {
+      year: req.body['education[metric][year]'],
+      rollNumber: req.body['education[metric][rollNumber]'],
+      marks: req.body['education[metric][marks]'],
+      school: req.body['education[metric][school]']
+    });
+
+    // Handle both bracket notation and nested structure
+    let metricYear, metricRollNumber, metricMarks, metricSchool;
+    
+    // Try bracket notation first
+    if (req.body['education[metric][year]']) {
+      metricYear = req.body['education[metric][year]'];
+      metricRollNumber = req.body['education[metric][rollNumber]'];
+      metricMarks = req.body['education[metric][marks]'];
+      metricSchool = req.body['education[metric][school]'];
+    }
+    // Fallback to nested structure
+    else if (req.body.education && req.body.education.metric) {
+      metricYear = req.body.education.metric.year;
+      metricRollNumber = req.body.education.metric.rollNumber;
+      metricMarks = req.body.education.metric.marks;
+      metricSchool = req.body.education.metric.school;
+    }
+    // Fallback to individual fields
+    else {
+      metricYear = req.body.metricYear || req.body.year;
+      metricRollNumber = req.body.metricRollNumber || req.body.rollNumber;
+      metricMarks = req.body.metricMarks || req.body.marks;
+      metricSchool = req.body.metricSchool || req.body.school;
+    }
+
+    console.log('🎓 Parsed education fields:', {
+      metricYear,
+      metricRollNumber,
+      metricMarks,
+      metricSchool
+    });
+
+    // Validate that all required education fields are present
+    if (!metricYear || !metricRollNumber || !metricMarks || !metricSchool) {
+      console.error('❌ Missing required education fields:', {
+        metricYear: !!metricYear,
+        metricRollNumber: !!metricRollNumber,
+        metricMarks: !!metricMarks,
+        metricSchool: !!metricSchool
+      });
+      return res.status(400).json({ 
+        error: 'Missing required education information. Please fill in all metric details: year, roll number, marks, and school.' 
+      });
+    }
+
     const {
       firstName,
       lastName,
@@ -52,10 +106,6 @@ router.post('/', upload.fields([
       city,
       state,
       zipCode,
-      'education[metric][year]': metricYear,
-      'education[metric][rollNumber]': metricRollNumber,
-      'education[metric][marks]': metricMarks,
-      'education[metric][school]': metricSchool,
       easypaisaNumber,
       transactionId
     } = req.body;
@@ -201,6 +251,42 @@ router.post('/', upload.fields([
       return res.status(500).json({ error: 'Failed to upload documents. Please try again.' });
     }
 
+    // Debug: Log application data being created
+    console.log('🏗️ Creating application with data:', {
+      firstName,
+      lastName,
+      fatherName,
+      email,
+      phone,
+      guardianPhone,
+      dateOfBirth,
+      gender,
+      class: studentClass,
+      group,
+      address,
+      city,
+      state,
+      zipCode,
+      education: {
+        metric: {
+          year: metricYear,
+          rollNumber: metricRollNumber,
+          marks: metricMarks,
+          school: metricSchool
+        }
+      },
+      documents: {
+        dmcMetric: dmcMetricUrl,
+        passportPhoto: passportPhotoUrl,
+        fatherCNIC: fatherCNICUrl,
+        migrationCertificate: migrationCertificateUrl
+      },
+      paymentAmount: '200',
+      easypaisaNumber,
+      transactionId,
+      transactionReceipt: transactionReceiptUrl
+    });
+
     const application = new Application({
       firstName,
       lastName,
@@ -230,7 +316,7 @@ router.post('/', upload.fields([
         fatherCNIC: fatherCNICUrl,
         migrationCertificate: migrationCertificateUrl
       },
-      paymentAmount: '500',
+      paymentAmount: '200',
       easypaisaNumber,
       transactionId,
       transactionReceipt: transactionReceiptUrl
